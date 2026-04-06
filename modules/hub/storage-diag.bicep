@@ -12,12 +12,6 @@ resource storagePrivateEndpointDiag 'Microsoft.Insights/diagnosticSettings@2021-
   scope: storagePrivateEndpointExisting
   properties: {
     workspaceId: workspaceId
-    logs: [
-      {
-        categoryGroup: 'allLogs'
-        enabled: true
-      }
-    ]
     metrics: [
       {
         category: 'AllMetrics'

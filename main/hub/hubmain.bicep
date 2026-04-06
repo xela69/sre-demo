@@ -1082,13 +1082,3 @@ module vmDiag '../../modules/hub/vm-diag.bicep' = if (deployVM) {
   }
   dependsOn: [hubVM, linuxVM]
 }
-
-module storageDiag '../../modules/hub/storage-diag.bicep' = if (deployStorage) {
-  name: 'storageDiagModule'
-  scope: resourceGroup(storageRGroup.name)
-  params: {
-    workspaceId: logsAnalytics!.outputs.resourceId
-    deployStorage: deployStorage
-  }
-  dependsOn: [storage]
-}
