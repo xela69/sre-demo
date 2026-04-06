@@ -9,7 +9,7 @@ param deployStorage bool = true
 param deployVM bool = true // Toggle to deploy Hub VM
 param enableVmInsightsPerfDcr bool = true // Optional: deploy a perf-focused DCR for VM Insights detailed metrics
 param deployBastion bool = false // Toggle to deploy Bastion Host
-param deployVpnGw bool = true // Toggle to deploy VPN Gateway
+param deployVpnGw bool = false // Toggle to deploy VPN Gateway
 param deployFirewall bool = true // Toggle to deploy Azure Firewall
 
 param natPublicIP string //injected securely from main.bicep for NAT testing

@@ -22,11 +22,10 @@ resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
     SecurityControl: 'Ignore'
   }
   properties: {
-    disableBgpRoutePropagation: true
+    disableBgpRoutePropagation: true // Static routing only (no BGP)
     routes: enableFirewallRouting
       ? [
           // ── On-prem prefixes: route through firewall for inspection ────
-          // Azure→on-prem traffic is inspected by firewall; return traffic via VPN gateway is NOT re-inspected
           {
             name: '${routeTableName}-to-onprem-fortiwifi'
             properties: {
@@ -59,6 +58,23 @@ resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
               nextHopIpAddress: fwPrivateIP
             }
           }
+          // ── Spoke-to-spoke: route through firewall for inspection ────
+          {
+            name: '${routeTableName}-to-spoke-apps'
+            properties: {
+              addressPrefix: '10.51.0.0/20' // Apps Spoke (AppsRG-VNet)
+              nextHopType: 'VirtualAppliance'
+              nextHopIpAddress: fwPrivateIP
+            }
+          }
+          {
+            name: '${routeTableName}-to-spoke-data'
+            properties: {
+              addressPrefix: '10.52.0.0/20' // Data Spoke (DataRG-VNet)
+              nextHopType: 'VirtualAppliance'
+              nextHopIpAddress: fwPrivateIP
+            }
+          }
           // ── Default route: all other traffic through firewall for inspection ────
           {
             name: '${routeTableName}-to-hubAzFirewall'
@@ -72,6 +88,8 @@ resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
       : []
   }
 }
+// Note: GatewaySubnet does NOT use UDRs; it relies on system routes only.
+// This table is kept for reference but not assigned to any subnet.
 resource hubVpnGatewayTable 'Microsoft.Network/routeTables@2024-07-01' = {
   name: vpnGwRouteTableName
   location: location
@@ -82,15 +100,54 @@ resource hubVpnGatewayTable 'Microsoft.Network/routeTables@2024-07-01' = {
     SecurityControl: 'Ignore'
   }
   properties: {
-    disableBgpRoutePropagation: true
+    disableBgpRoutePropagation: true // Static routing only (no BGP)
+    routes: [] // Empty; GatewaySubnet uses system routes
+  }
+}
+
+// ── Route table for AzureFirewallSubnet to forward on-prem traffic to VPN gateway ────
+// ── AzureFirewallSubnet route table: forward on-prem traffic to VPN gateway ────
+// Purpose: After firewall inspects on-prem-destined traffic, it needs to know how to reach on-prem.
+// Answer: Through the VPN Gateway (via IPsec tunnel).
+resource firewallSubnetRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
+  name: '${routeTableName}-fw-subnet'
+  location: location
+  tags: {
+    Service: 'Network'
+    CostCenter: 'Infrastructure'
+    Environment: 'Production'
+    SecurityControl: 'Ignore'
+  }
+  properties: {
+    disableBgpRoutePropagation: true // Static routing only (no BGP)
     routes: enableFirewallRouting
       ? [
           {
-            name: '${vpnGwRouteTableName}-to-hubVpnGateway'
+            name: 'fw-to-onprem-fortiwifi'
             properties: {
-              addressPrefix: '0.0.0.0/0'
-              nextHopType: 'VirtualAppliance'
-              nextHopIpAddress: fwPrivateIP
+              addressPrefix: '10.2.1.0/24'
+              nextHopType: 'VirtualNetworkGateway'
+            }
+          }
+          {
+            name: 'fw-to-onprem-hq'
+            properties: {
+              addressPrefix: '10.6.1.0/24'
+              nextHopType: 'VirtualNetworkGateway'
+            }
+          }
+          {
+            name: 'fw-to-onprem-dc1'
+            properties: {
+              addressPrefix: '172.16.110.0/24'
+              nextHopType: 'VirtualNetworkGateway'
+            }
+          }
+          {
+            name: 'fw-to-onprem-dc2'
+            properties: {
+              addressPrefix: '172.17.111.0/24'
+              nextHopType: 'VirtualNetworkGateway'
             }
           }
         ]
@@ -122,22 +179,25 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = {
         properties: {
           addressPrefixes: [subnetPrefixes[i]]
           privateEndpointNetworkPolicies: subnetNames[i] == 'privateEPSubnet' ? 'Disabled' : null
-          routeTable: !contains(
-              [
-                'AzureFirewallSubnet'
-                'GatewaySubnet'
-                'privateEPSubnet'
-                'AzureBastionSubnet'
-                'appGatewaySubnet'
-                'dns-inbound'
-                'dns-outbound'
-              ],
-              subnetNames[i]
-            )
+          routeTable: subnetNames[i] == 'AzureFirewallSubnet'
             ? {
-                id: hubRouteTable.id
+                id: firewallSubnetRouteTable.id
               }
-            : null
+            : !contains(
+                  [
+                    'GatewaySubnet'
+                    'privateEPSubnet'
+                    'AzureBastionSubnet'
+                    'appGatewaySubnet'
+                    'dns-inbound'
+                    'dns-outbound'
+                  ],
+                  subnetNames[i]
+                )
+                ? {
+                    id: hubRouteTable.id
+                  }
+                : null
           delegations: contains(['dns-inbound', 'dns-outbound'], subnetNames[i])
             ? [
                 {

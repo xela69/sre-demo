@@ -98,6 +98,43 @@ IP Group `trustedAzureSubnets`: `10.50.0.0/20` (hub), `10.51.0.0/20` (data), `10
 IP Group `infraServerSubnets`: `10.50.0.0/24`, `10.51.0.0/24`, `10.52.0.0/24` (internet egress rules)
 
 ---
+┌─────────────────────────────────────────────────────────────────┐
+│  AZURE HUB-SPOKE-ONPREM ROUTING MODEL                           │
+└─────────────────────────────────────────────────────────────────┘
+
+SPOKE VMs (10.51.1.0, 10.52.0.0, etc.)
+  ├─ RouteTable: hubRouteTable (BGP disabled)
+  ├─ Routes:
+  │  ├─ 10.2.1.0/24 → Firewall 10.50.4.4 (inspection)
+  │  ├─ 10.6.1.0/24 → Firewall 10.50.4.4 (inspection)
+  │  ├─ 172.16.110.0/24 → Firewall 10.50.4.4 (inspection)
+  │  ├─ 172.17.111.0/24 → Firewall 10.50.4.4 (inspection)
+  │  └─ 0.0.0.0/0 → Firewall 10.50.4.4 (default)
+
+FIREWALL SUBNET (10.50.4.0/26)
+  ├─ RouteTable: firewallSubnetRouteTable (BGP ENABLED ✅)
+  ├─ Explicit routes:
+  │  ├─ 10.2.1.0/24 → VPN Gateway
+  │  ├─ 10.6.1.0/24 → VPN Gateway
+  │  ├─ 172.16.110.0/24 → VPN Gateway
+  │  └─ 172.17.111.0/24 → VPN Gateway
+  └─ Dynamic routes (learned via BGP):
+     ├─ 10.50.0.0/20 (Hub VNet, system route)
+     ├─ 10.51.0.0/20 (Spoke1, if peered)
+     ├─ 10.52.0.0/20 (Spoke2, if peered)
+     └─ 10.53.0.0/20 (Spoke3, if peered)
+
+GATEWAY SUBNET (10.50.2.0/26, contains VPN Gateway)
+  ├─ RouteTable: hubVpnGatewayTable (BGP disabled)
+  ├─ Routes:
+  │  └─ 0.0.0.0/0 → Firewall 10.50.4.4
+  └─ System routes (ALWAYS present, no table needed):
+     ├─ 10.50.0.0/20 (Hub VNet direct)
+     └─ 10.2.1.0/24, etc. (from on-prem via IPsec)
+
+ONPREM
+  ├─ Sends to Azure via IPsec tunnel
+  └─ Receives via return route in VPN tunnel
 
 ## Apps-Spoke VM Inventory (SQL VM)
 
