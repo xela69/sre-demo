@@ -1,0 +1,42 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editors and IDEs
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# PowerShell and shell temp artifacts
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Azure/Bicep local outputs and transient files
+*.bicepparam
+*.parameters.local.json
+
+# Secrets and local env files
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.cer
+
+# OS temp files
+Thumbs.db
