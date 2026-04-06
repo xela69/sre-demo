@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "9870977564555370004"
+      "templateHash": "7269450132659373050"
     }
   },
   "parameters": {
@@ -47,7 +47,7 @@
     },
     "Peering": {
       "type": "bool",
-      "defaultValue": true
+      "defaultValue": false
     }
   },
   "resources": [
@@ -64,7 +64,7 @@
       },
       "properties": {
         "disableBgpRoutePropagation": false,
-        "routes": "[if(parameters('enableFirewallRouting'), createArray(createObject('name', format('{0}-to-onprem-fortiwifi', parameters('routeTableName')), 'properties', createObject('addressPrefix', '10.2.1.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-onprem-hq', parameters('routeTableName')), 'properties', createObject('addressPrefix', '10.6.1.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-onprem-dc1', parameters('routeTableName')), 'properties', createObject('addressPrefix', '172.16.110.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-onprem-dc2', parameters('routeTableName')), 'properties', createObject('addressPrefix', '172.17.110.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-hubAzFirewall', parameters('routeTableName')), 'properties', createObject('addressPrefix', '0.0.0.0/0', 'nextHopType', 'VirtualAppliance', 'nextHopIpAddress', parameters('fwPrivateIP')))), createArray())]"
+        "routes": "[if(parameters('enableFirewallRouting'), createArray(createObject('name', format('{0}-to-onprem-fortiwifi', parameters('routeTableName')), 'properties', createObject('addressPrefix', '10.2.1.0/24', 'nextHopType', 'VirtualNetworkGateway')), createObject('name', format('{0}-to-onprem-hq', parameters('routeTableName')), 'properties', createObject('addressPrefix', '10.6.1.0/24', 'nextHopType', 'VirtualNetworkGateway')), createObject('name', format('{0}-to-onprem-dc1', parameters('routeTableName')), 'properties', createObject('addressPrefix', '172.16.110.0/24', 'nextHopType', 'VirtualNetworkGateway')), createObject('name', format('{0}-to-onprem-dc2', parameters('routeTableName')), 'properties', createObject('addressPrefix', '172.17.111.0/24', 'nextHopType', 'VirtualNetworkGateway')), createObject('name', format('{0}-to-hubAzFirewall', parameters('routeTableName')), 'properties', createObject('addressPrefix', '0.0.0.0/0', 'nextHopType', 'VirtualAppliance', 'nextHopIpAddress', parameters('fwPrivateIP')))), createArray())]"
       }
     },
     {

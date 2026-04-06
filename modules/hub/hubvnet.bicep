@@ -22,36 +22,41 @@ resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
     SecurityControl: 'Ignore'
   }
   properties: {
-    disableBgpRoutePropagation: false
+    disableBgpRoutePropagation: true
     routes: enableFirewallRouting
       ? [
-          // ── On-prem prefixes: bypass firewall to avoid asymmetric routing on return traffic ────
+          // ── On-prem prefixes: route through firewall for inspection ────
+          // Azure→on-prem traffic is inspected by firewall; return traffic via VPN gateway is NOT re-inspected
           {
             name: '${routeTableName}-to-onprem-fortiwifi'
             properties: {
               addressPrefix: '10.2.1.0/24' // FortiWifi Network
-              nextHopType: 'VnetLocal' // Via VPN GW / BGP, not firewall
+              nextHopType: 'VirtualAppliance'
+              nextHopIpAddress: fwPrivateIP
             }
           }
           {
             name: '${routeTableName}-to-onprem-hq'
             properties: {
               addressPrefix: '10.6.1.0/24' // HQ IPs
-              nextHopType: 'VnetLocal'
+              nextHopType: 'VirtualAppliance'
+              nextHopIpAddress: fwPrivateIP
             }
           }
           {
             name: '${routeTableName}-to-onprem-dc1'
             properties: {
               addressPrefix: '172.16.110.0/24' // DC-1
-              nextHopType: 'VnetLocal'
+              nextHopType: 'VirtualAppliance'
+              nextHopIpAddress: fwPrivateIP
             }
           }
           {
             name: '${routeTableName}-to-onprem-dc2'
             properties: {
               addressPrefix: '172.17.111.0/24' // DC-2
-              nextHopType: 'VnetLocal'
+              nextHopType: 'VirtualAppliance'
+              nextHopIpAddress: fwPrivateIP
             }
           }
           // ── Default route: all other traffic through firewall for inspection ────
@@ -77,7 +82,7 @@ resource hubVpnGatewayTable 'Microsoft.Network/routeTables@2024-07-01' = {
     SecurityControl: 'Ignore'
   }
   properties: {
-    disableBgpRoutePropagation: false
+    disableBgpRoutePropagation: true
     routes: enableFirewallRouting
       ? [
           {
