@@ -1,0 +1,25 @@
+Resources
+| where type =~ 'microsoft.hybridcompute/machines/extensions'
+| where properties.type in~ ('WindowsAgent.SqlServer', 'LinuxAgent.SqlServer')
+| extend LicenseType = tostring(properties.settings.LicenseType)
+| extend MachineId = toupper(substring(id, 0, indexof(id, '/extensions')))
+| project MachineId, LicenseType, subscriptionId, resourceGroup
+| join kind=inner (
+    Resources
+    | where type =~ 'microsoft.hybridcompute/machines'
+    | extend MachineId = toupper(id)
+    | project MachineId, MachineName = name
+) on MachineId
+| join kind=leftouter (
+    Resources
+    | where type =~ 'microsoft.azurearcdata/sqlserverinstances'
+    | extend MachineId = toupper(tostring(properties.containerResourceId))
+    | project MachineId, SqlEdition = tostring(properties.edition), SqlVersion = tostring(properties.version)
+) on MachineId
+| join kind=leftouter (
+    ResourceContainers
+    | where type =~ 'microsoft.resources/subscriptions'
+    | project subscriptionId, SubscriptionName = name
+) on subscriptionId
+| project MachineName, SubscriptionName, subscriptionId, resourceGroup, LicenseType, SqlEdition, SqlVersion
+| order by SubscriptionName asc, resourceGroup asc, MachineName asc

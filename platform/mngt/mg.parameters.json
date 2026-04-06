@@ -1,0 +1,13 @@
+{
+  "platformPrefix": { "value": "xela" },
+  "rootManagementGroupName": { "value": "xelacorp" },
+  "rootManagementGroupDisplayName": { "value": "XelaTech Corp" },
+  "childManagementGroups": {
+    "value": [
+      { "name": "data_center", "displayName": "Data Center Grp" },
+      { "name": "DataMgmt", "displayName": "DataApps" },
+      { "name": "xela_infra", "displayName": "Xela Infrastructure" }
+    ]
+  },
+  "managementSubscriptionId": { "value": "<subscription hosting the management baseline>" }
+}

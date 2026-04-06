@@ -1,0 +1,181 @@
+/etc/dnsmasq.d$ cat azure.conf 
+# --- Azure Private Endpoints (Key Vault) ---
+server=/vault.azure.net/10.50.1.4
+server=/privatelink.vaultcore.azure.net/10.50.1.4
+
+# (keep your general fallbacks)
+server=1.1.1.1
+server=8.8.8.8
+=========
+# ----- dnsmasq for on-prem → Azure Private DNS -----
+# Listen only on the on-prem address (and localhost)
+listen-address=127.0.0.1,172.16.110.5
+bind-interfaces
+domain-needed
+bogus-priv
+
+# Default upstreams for everything NOT in Private Link (use what you like)
+server=1.1.1.1
+server=8.8.8.8
+
+# ===== Option A: forward to Azure Firewall DNS proxy =====
+# (Firewall must have DNS Proxy enabled and its Custom DNS Servers set
+#  to your Private DNS Resolver INBOUND IPs.)
+# ---------- Azure Storage ----------
+server=/blob.core.windows.net/10.50.1.4
+server=/privatelink.blob.core.windows.net/10.50.1.4
+server=/file.core.windows.net/10.50.1.4
+server=/privatelink.file.core.windows.net/10.50.1.4
+server=/queue.core.windows.net/10.50.1.4
+server=/privatelink.queue.core.windows.net/10.50.1.4
+server=/table.core.windows.net/10.50.1.4
+server=/privatelink.table.core.windows.net/10.50.1.4
+server=/dfs.core.windows.net/10.50.1.4           # ADLS Gen2
+server=/privatelink.dfs.core.windows.net/10.50.1.4
+
+# ---------- Key Vault ----------
+server=/vault.azure.net/10.50.1.4                 # parent is *vault.azure.net*
+server=/privatelink.vaultcore.azure.net/10.50.1.4
+
+# ---------- Azure SQL ----------
+server=/database.windows.net/10.50.1.4
+server=/privatelink.database.windows.net/10.50.1.4
+
+# ---------- MySQL / PostgreSQL (Flexible Server) ----------
+server=/mysql.database.azure.com/10.50.1.4
+server=/privatelink.mysql.database.azure.com/10.50.1.4
+server=/postgres.database.azure.com/10.50.1.4
+server=/privatelink.postgres.database.azure.com/10.50.1.4
+
+# ---------- Cosmos DB ----------
+server=/documents.azure.com/10.50.1.4
+server=/privatelink.documents.azure.com/10.50.1.4
+
+# ---------- Azure Cache for Redis ----------
+server=/redis.cache.windows.net/10.50.1.4
+server=/privatelink.redis.cache.windows.net/10.50.1.4
+
+# ---------- Service Bus ----------
+server=/servicebus.windows.net/10.50.1.4
+server=/privatelink.servicebus.windows.net/10.50.1.4
+
+# ---------- API Management ----------
+server=/azure-api.net/10.50.1.4
+server=/privatelink.azure-api.net/10.50.1.4
+
+# ---------- App Service ----------
+server=/azurewebsites.net/10.50.1.4
+server=/privatelink.azurewebsites.net/10.50.1.4
+
+# ---------- Container Registry ----------
+server=/azurecr.io/10.50.1.4
+server=/privatelink.azurecr.io/10.50.1.4
+
+# ---------- Cognitive Search ----------
+server=/search.windows.net/10.50.1.4
+server=/privatelink.search.windows.net/10.50.1.4
+
+# ---------- Monitor / Log Analytics ----------
+server=/monitor.azure.com/10.50.1.4
+server=/privatelink.monitor.azure.com/10.50.1.4
+server=/ods.opinsights.azure.com/10.50.1.4
+server=/privatelink.ods.opinsights.azure.com/10.50.1.4
+server=/oms.opinsights.azure.com/10.50.1.4
+server=/privatelink.oms.opinsights.azure.com/10.50.1.4
+
+# ---------- Data Factory ----------
+server=/datafactory.azure.net/10.50.1.4
+server=/privatelink.datafactory.azure.net/10.50.1.4
+
+# ---------- Azure Batch ----------
+server=/batch.azure.com/10.50.1.4
+server=/privatelink.batch.azure.com/10.50.1.4
+
+# ---------- App Configuration ----------
+server=/azconfig.io/10.50.1.4
+server=/privatelink.azconfig.io/10.50.1.4
+
+# ---------- AKS ----------
+server=/azmk8s.io/10.50.1.4
+server=/privatelink.azmk8s.io/10.50.1.4
+
+# ---------- Purview ----------
+server=/purview.azure.com/10.50.1.4
+server=/privatelink.purview.azure.com/10.50.1.4
+# (add any other Private Link zones you use)
+
+# ===== Option B (direct): forward straight to the Private DNS Resolver INBOUND IPs =====
+# Uncomment and replace with your two inbound endpoint IPs if you prefer to
+# bypass the firewall proxy:
+#server=/privatelink.blob.core.windows.net/10.50.x.x
+#server=/privatelink.blob.core.windows.net/10.50.y.y
+#... (repeat for each zone as above)
+# command to check dns in linux
+dig @127.0.0.1 -p 53 privatelink.blob.core.windows.net
+# Or use built-ins right now:
+getent hosts microsoft.com
+getent hosts 23.45.46.19
+dig -x 23.45.46.19 +short
+# External (should go to 1.1.1.1/9.9.9.9)
+dig +short microsoft.com @127.0.0.1
+
+# Private Link (replace with a real PE name you have)
+dig +short xelavaultt3sj.vault.azure.net @127.0.0.1 
+nslookup xelavaultt3sj.vault.azure.net 10.50.1.4
+
+# turn on query logging briefly to see what dnsmasq is doing:
+echo -e "log-queries\n" | sudo tee /etc/dnsmasq.d/99-logging.conf
+sudo systemctl restart dnsmasq
+sudo journalctl -u dnsmasq -n 100 --no-pager
+# (remove 99-logging.conf after you’re done)
+tail -f /var/log/syslog | grep dnsmasq
+
+# to check for dns listening ports
+sudo ss -lupn 'sport = :53'
+sudo ss -ltnp 'sport = :53'
+# allow DNS traffic via linux fw
+sudo ufw allow 53/udp
+sudo ufw allow 53/tcp
+# (optionally scope to Azure address space)
+# sudo ufw allow proto udp from 10.50.0.0/20 to any port 53
+# sudo ufw allow proto tcp from 10.50.0.0/20 to any port 53
+sudo ufw status verbose
+
+# (optional) see current rules and note any broad "22/tcp" allows
+sudo ufw status numbered
+
+# add the three source-scoped rules
+sudo ufw allow proto tcp from 10.2.1.0/24  to any port 22 comment 'SSH from on-prem WiFi'
+sudo ufw allow proto tcp from 192.168.0.1/24 to any port 22 comment 'SSH from Google-WiFi'
+sudo ufw allow proto tcp from 10.50.0.0/20 to any port 22 comment 'SSH from Azure hub/spoke1'
+sudo ufw allow proto tcp from 10.51.0.0/20 to any port 22 comment 'SSH from Azure spoke2'
+
+# (optional but wise) remove any wide-open SSH rule if present (e.g., "22/tcp ALLOW Anywhere")
+# sudo ufw delete allow 22/tcp
+
+# confirm all linux ports
+sudo ufw status verbose
+
+# sanity: sshd is listening
+sudo ss -ltnp 'sport = :22'
+
+# Then reload and sanity-check:
+sudo systemctl stop dnsmasq
+sudo systemctl restart dnsmasq
+sudo systemctl enable dnsmasq
+sudo dnsmasq --test           # should print: "syntax check OK"
+sudo systemctl status dnsmasq
+
+dig +short xelavaultt3sj.vault.azure.net	
+dig +short hubstorerdku.blob.core.windows.net
+dig +short apps7rck.file.core.windows.net
+
+dig +short mac.onprem.xelatech.net
+dig +short dns01.onprem.xelatech.net
+
+dig +short  hubstoreq6mu.file.core.windows.net
+nslookup xelaacrlpzn.azurecr.io
+nslookup xelaacrlpzn.westus.data.azurecr.io
+
+dig +short xelavaultf3mq.vault.azure.net
+nslookup xelavaultf3mq.vault.azure.net

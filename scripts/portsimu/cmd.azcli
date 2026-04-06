@@ -1,0 +1,49 @@
+ssh -i ~/.ssh/id_rsa -p 2221 vmuser@130.131.58.206
+# regenerate to remove old ssh keys
+ssh-keygen -R 10.50.0.5
+sudo apt install python3
+sudo apt install python3-pip
+pip3 --version
+pip3 install requests
+# find the exact interpreter you’re using
+python3 -c 'import sys; print(sys.executable)'
+# 1) Resolve the real python binary
+readlink -f /usr/bin/python3
+# sample output: /usr/bin/python3.12
+# 2) Grant the bind-low-ports capability to that real binary
+sudo setcap 'cap_net_bind_service=+ep' /usr/bin/python3.12
+
+# 3) Verify
+getcap /usr/bin/python3.12
+# -> /usr/bin/python3.12 = cap_net_bind_service+ep
+# -> /usr/bin/python3 = cap_net_bind_service+ep
+# run the python script to start the port simulator
+sudo python3 server.py
+# connect to the port simulator VM
+sudo ssh -o "StrictHostKeyChecking no" vmuser@10.50.0.5
+# stop the port simulator
+sudo pkill -f server.py
+
+# TCP 22 (ssh)
+sudo lsof -nP -iTCP:22 -sTCP:LISTEN
+sudo ss -lntp 'sport = :22'
+
+# TCP/UDP 53 (DNS)
+sudo lsof -nP -iTCP:53 -sTCP:LISTEN
+sudo lsof -nP -iUDP:53
+sudo ss -lnup 'sport = :53'
+
+# Check status
+systemctl status systemd-resolved
+
+# Turn off the local 127.0.0.53 listener but keep the resolver running
+sudo mkdir -p /etc/systemd/resolved.conf.d
+printf "[Resolve]\nDNSStubListener=no\n" | sudo tee /etc/systemd/resolved.conf.d/no-stub.conf
+sudo systemctl restart systemd-resolved
+
+# Point resolv.conf at a real DNS (Azure DNS 168.63.129.16, or your custom DNS)
+sudo rm -f /etc/resolv.conf
+printf "nameserver 168.63.129.16\noptions timeout:1 attempts:1\n" | sudo tee /etc/resolv.conf
+# should show nothing using those ports
+sudo ss -lntup | egrep ':(22|53)\b'  
+sudo python3 server.py

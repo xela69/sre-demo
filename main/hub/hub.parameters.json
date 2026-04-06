@@ -1,0 +1,57 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "hubLocation": {
+      "value": "westus2"
+    },
+    "hubRgName": {
+      "value": "hubRG"
+    },
+    "hubVnetName": {
+      "value": "hubRG-VNet"
+    },
+    "hubAddressSpace": {
+      "value": "10.0.0.0/20"
+    },
+    "firewallPrivateIP": {
+      "value": "10.0.4.4"
+    },
+    "deployHubVnet": {
+      "value": true
+    },
+    "deploySecurity": {
+      "value": true
+    },
+    "deployAcr": {
+      "value": true
+    },
+    "deploylogsAnalytics": {
+      "value": true
+    },
+    "deployPrivZones": {
+      "value": true
+    },
+    "dnsresolver": {
+      "value": true
+    },
+    "deployStorage": {
+      "value": true
+    },
+    "deployVM": {
+      "value": true
+    },
+    "deployBastion": {
+      "value": false
+    },
+    "deployVpnGw": {
+      "value": true
+    },
+    "deployFirewall": {
+      "value": true
+    },
+    "enableVmInsightsPerfDcr": {
+      "value": true
+    }
+  }
+}

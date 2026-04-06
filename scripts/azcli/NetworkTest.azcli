@@ -1,0 +1,53 @@
+ping <spoke1-vm-private-ip>   # For internal ICMP tests (if allowed)
+Test-NetConnection 52.250.111.72 -Port 22
+Test-NetConnection <spoke1-vm-ip> -Port 22
+Test-NetConnection <hub-vm-ip> -Port 22
+# From each spoke VM, test outbound connectivity:
+Test-NetConnection google.com -Port 80
+Test-NetConnection google.com -Port 443
+curl https://www.microsoft.com
+Test-NetConnection www.microsoft.com -Port 443
+nslookup www.microsoft.com
+ping 10,1.0.4
+# kusto filter
+AzureDiagnostics 
+| where Category == "AzureFirewallNetworkRule"
+| project TimeGenerated, msg_s, SourceIP_s, DestinationIP_s, Protocol_s
+az monitor log-analytics query --workspace 4d637191-8ee8-4aca-bd04-15cd459af7d9 --analytics-query "Heartbeat | summarize count() by Computer" --output table
+# For more complex queries, you can use Kusto Query Language (KQL) to analyze your logs. For example, to get the count of heartbeats from each computer:
+az monitor log-analytics query --workspace 4d637191-8ee8-4aca-bd04-15cd459af7d9 --analytics-query "Heartbeat | summarize count() by Computer" --output table
+# To filter logs based on specific criteria, you can modify your KQL query. For example, to get heartbeats from a specific computer:
+az monitor log-analytics query --workspace 4d637191-8ee8-4aca-bd04-15cd459af7d9 --analytics-query "Heartbeat | where Computer == 'spoke1-vm-name' | summarize count()" --output table
+# To get more detailed information about the logs, you can use the summarize operator with additional functions. For example, to get the average CPU usage from the logs:
+az monitor log-analytics query --workspace 4d637191-8ee8-4aca-bd04-15cd459af7d9 --analytics-query "Perf | where ObjectName == 'Processor' and CounterName == '% Processor Time' | summarize avg(CounterValue) by Computer" --output table
+
+az vm user update --resource-group vmRG --name vmlssi2 --username vmuser --ssh-key-value ~/.ssh/id_rsa.pub
+
+# To allow VM A to SSH into VM B: copy your Mac’s private key (id_rsa) into VM A’s ~/.ssh/ and 
+chmod 600 ~/.ssh/id_rsa
+
+# Test Plan to Validate Azure Firewall Policy Behavior
+nslookup microsoft.com 168.63.129.16
+dig microsoft.com @168.63.129.16
+# HTTP/HTTPS Allow Test
+curl -I https://microsoft.com
+curl -I https://<your-keyvault>.vault.azure.net # show hit key vault
+curl -I https://facebook.com # should fail
+
+# SSH/RDP Network Rule Test
+nc -zv some-ssh-host.com 22
+nc -zv some-rdp-host.com 3389
+
+# NTP Rule Bypass Check -- Run ntpdate or chronyc (Linux)
+chronyc
+
+# Log Analytics Review
+AzureDiagnostics
+| where ResourceType == "AZUREFIREWALLS"
+| where TimeGenerated > ago(30m)
+| project TimeGenerated, msg_s, protocol_s, SourceIP_s, DestinationIP_s, Fqdn_s
+
+# Look for: Hits on allowed FQDNs (*.vault.azure.net), Denies to unwanted traffic (e.g., Facebook, raw IPs)
+
+az network public-ip show --name <your-fw-ip-name> --resource-group <rg>
+az network firewall show --name <fw-name> --resource-group <rg>

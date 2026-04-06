@@ -1,0 +1,1128 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.42.1.51946",
+      "templateHash": "12123236209988051785"
+    }
+  },
+  "parameters": {
+    "firewallName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the Azure Firewall"
+      }
+    },
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Location for all resources"
+      }
+    },
+    "hubVnetResourceGroup": {
+      "type": "string"
+    },
+    "firewallPolicyName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the firewall policy"
+      }
+    },
+    "natPublicIP": {
+      "type": "string",
+      "metadata": {
+        "description": "Public IP to use for inbound NAT rules"
+      }
+    },
+    "linuxVMPrivIP": {
+      "type": "string",
+      "metadata": {
+        "description": "Linux VM private IP address"
+      }
+    },
+    "hubVMPrivIP": {
+      "type": "string",
+      "metadata": {
+        "description": "Hub VM private IP address"
+      }
+    },
+    "dnsResolverName": {
+      "type": "string",
+      "metadata": {
+        "description": "DNS Resolver name"
+      }
+    },
+    "hubVnetName": {
+      "type": "string",
+      "metadata": {
+        "description": "VNet names array"
+      }
+    },
+    "logAnalyticsWorkspaceId": {
+      "type": "string",
+      "metadata": {
+        "description": "The Log Analytics workspace resource ID"
+      }
+    },
+    "firewallPrincipalId": {
+      "type": "string",
+      "metadata": {
+        "description": "The principalId of the Firewall Managed Identity"
+      }
+    },
+    "firewallIdentityId": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource ID of the user-assigned managed identity to attach to Azure Firewall"
+      }
+    },
+    "enableFwPublicDns": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "TEMPORARY break-glass to let the firewall talk to public DNS directly"
+      }
+    },
+    "routeTableName": {
+      "type": "string"
+    },
+    "diagnosticsName": {
+      "type": "string",
+      "defaultValue": "fw-log-analytics"
+    }
+  },
+  "variables": {
+    "trustedAzureSubnets": [
+      "10.0.0.0/20",
+      "10.1.0.0/20",
+      "10.2.0.0/20",
+      "10.3.0.0/20"
+    ],
+    "trustedOnPremSubnets": [
+      "10.2.1.0/24",
+      "10.6.1.0/24",
+      "172.16.110.0/24",
+      "172.17.110.0/24"
+    ],
+    "publicDnatNets": [
+      "[parameters('natPublicIP')]"
+    ],
+    "umbrellaDnsIpAddresses": [
+      "172.17.110.0/24",
+      "168.63.129.16"
+    ],
+    "denyPublicDnsIpAddresses": [
+      "1.1.1.1",
+      "1.0.0.1",
+      "8.8.8.8",
+      "8.8.4.4",
+      "9.9.9.9",
+      "149.112.112.112",
+      "208.67.222.222",
+      "208.67.220.220"
+    ],
+    "BadPublicIpsAddressGroup": [
+      "23.185.0.3",
+      "142.251.40.46"
+    ],
+    "infraServerSubnets": [
+      "10.0.0.0/24",
+      "10.1.0.0/24",
+      "10.2.0.0/24",
+      "10.3.0.0/24"
+    ],
+    "internetUdpPorts": [
+      "168.61.215.74/32",
+      "208.67.222.0/24"
+    ],
+    "internetTcpPorts": [
+      "52.202.184.83",
+      "10.238.123.105"
+    ],
+    "internetHttpPort": [
+      "84.201.220.0/24",
+      "104.114.79.0/24",
+      "104.123.159.0/24",
+      "184.25.59.0/24",
+      "23.32.0.0/11"
+    ],
+    "internetHttpsPort": [
+      "23.32.0.0/11",
+      "23.47.72.0/24",
+      "23.56.99.0/24"
+    ]
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}-fwIP', parameters('firewallName'))]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "Service": "Network",
+        "CostCenter": "Infrastructure",
+        "Environment": "Production",
+        "Owner": "CPS",
+        "SecurityControl": "Ignore"
+      },
+      "sku": {
+        "name": "Standard",
+        "tier": "Regional"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Static",
+        "dnsSettings": {
+          "domainNameLabel": "[toLower(format('{0}{1}', parameters('firewallName'), substring(uniqueString(resourceGroup().id), 0, 4)))]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Network/firewallPolicies",
+      "apiVersion": "2024-05-01",
+      "name": "[parameters('firewallPolicyName')]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "Service": "Network",
+        "CostCenter": "Infrastructure",
+        "Environment": "Production",
+        "Owner": "Xelatech",
+        "SecurityControl": "Ignore"
+      },
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', parameters('firewallIdentityId'))]": {}
+        }
+      },
+      "properties": {
+        "sku": {
+          "tier": "Premium"
+        },
+        "threatIntelMode": "Deny",
+        "dnsSettings": {
+          "enableProxy": true,
+          "servers": [
+            "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubVnetResourceGroup')), 'Microsoft.Network/dnsResolvers/inboundEndpoints', parameters('dnsResolverName'), 'inbound'), '2025-05-01').ipConfigurations[0].privateIpAddress]"
+          ]
+        },
+        "insights": {
+          "isEnabled": true,
+          "retentionDays": 30,
+          "logAnalyticsResources": {
+            "workspaces": [
+              {
+                "region": "[parameters('location')]",
+                "workspaceId": {
+                  "id": "[parameters('logAnalyticsWorkspaceId')]"
+                }
+              }
+            ],
+            "defaultWorkspaceId": {
+              "id": "[parameters('logAnalyticsWorkspaceId')]"
+            }
+          }
+        },
+        "intrusionDetection": {
+          "mode": "Deny",
+          "configuration": {
+            "signatureOverrides": [],
+            "bypassTrafficSettings": []
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Network/azureFirewalls",
+      "apiVersion": "2024-05-01",
+      "name": "[parameters('firewallName')]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "Service": "Network",
+        "CostCenter": "Infrastructure",
+        "Environment": "Production",
+        "Owner": "CPS",
+        "SecurityControl": "Ignore"
+      },
+      "properties": {
+        "sku": {
+          "name": "AZFW_VNet",
+          "tier": "Premium"
+        },
+        "ipConfigurations": [
+          {
+            "name": "firewall-ipconfig",
+            "properties": {
+              "subnet": {
+                "id": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubVnetResourceGroup')), 'Microsoft.Network/virtualNetworks/subnets', parameters('hubVnetName'), 'AzureFirewallSubnet')]"
+              },
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-fwIP', parameters('firewallName')))]"
+              }
+            }
+          }
+        ],
+        "firewallPolicy": {
+          "id": "[resourceId('Microsoft.Network/firewallPolicies', parameters('firewallPolicyName'))]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/firewallPolicies', parameters('firewallPolicyName'))]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-fwIP', parameters('firewallName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/ipGroups",
+      "apiVersion": "2024-05-01",
+      "name": "ipg-trusted-azure",
+      "location": "[parameters('location')]",
+      "tags": {
+        "SecurityControl": "Ignore"
+      },
+      "properties": {
+        "ipAddresses": "[variables('trustedAzureSubnets')]"
+      }
+    },
+    {
+      "type": "Microsoft.Network/ipGroups",
+      "apiVersion": "2024-05-01",
+      "name": "ipg-trusted-onprem",
+      "location": "[parameters('location')]",
+      "tags": {
+        "SecurityControl": "Ignore"
+      },
+      "properties": {
+        "ipAddresses": "[variables('trustedOnPremSubnets')]"
+      }
+    },
+    {
+      "type": "Microsoft.Network/ipGroups",
+      "apiVersion": "2024-05-01",
+      "name": "ipg-public-dnat",
+      "location": "[parameters('location')]",
+      "tags": {
+        "SecurityControl": "Ignore"
+      },
+      "properties": {
+        "ipAddresses": "[variables('publicDnatNets')]"
+      }
+    },
+    {
+      "type": "Microsoft.Network/ipGroups",
+      "apiVersion": "2024-05-01",
+      "name": "ipg-umbrella-dns",
+      "location": "[parameters('location')]",
+      "tags": {
+        "SecurityControl": "Ignore"
+      },
+      "properties": {
+        "ipAddresses": "[variables('umbrellaDnsIpAddresses')]"
+      }
+    },
+    {
+      "type": "Microsoft.Network/ipGroups",
+      "apiVersion": "2024-05-01",
+      "name": "ipg-infra-servers",
+      "location": "[parameters('location')]",
+      "tags": {
+        "SecurityControl": "Ignore"
+      },
+      "properties": {
+        "ipAddresses": "[variables('infraServerSubnets')]"
+      }
+    },
+    {
+      "type": "Microsoft.Network/ipGroups",
+      "apiVersion": "2024-05-01",
+      "name": "ipg-internet-udp-ports",
+      "location": "[parameters('location')]",
+      "tags": {
+        "SecurityControl": "Ignore"
+      },
+      "properties": {
+        "ipAddresses": "[variables('internetUdpPorts')]"
+      }
+    },
+    {
+      "type": "Microsoft.Network/ipGroups",
+      "apiVersion": "2024-05-01",
+      "name": "ipg-internet-tcp-ports",
+      "location": "[parameters('location')]",
+      "tags": {
+        "SecurityControl": "Ignore"
+      },
+      "properties": {
+        "ipAddresses": "[variables('internetTcpPorts')]"
+      }
+    },
+    {
+      "type": "Microsoft.Network/ipGroups",
+      "apiVersion": "2024-05-01",
+      "name": "ipg-internet-http-port",
+      "location": "[parameters('location')]",
+      "tags": {
+        "SecurityControl": "Ignore"
+      },
+      "properties": {
+        "ipAddresses": "[variables('internetHttpPort')]"
+      }
+    },
+    {
+      "type": "Microsoft.Network/ipGroups",
+      "apiVersion": "2024-05-01",
+      "name": "ipg-internet-https-port",
+      "location": "[parameters('location')]",
+      "tags": {
+        "SecurityControl": "Ignore"
+      },
+      "properties": {
+        "ipAddresses": "[variables('internetHttpsPort')]"
+      }
+    },
+    {
+      "type": "Microsoft.Network/ipGroups",
+      "apiVersion": "2024-05-01",
+      "name": "ipg-deny-public-dns",
+      "location": "[parameters('location')]",
+      "tags": {
+        "SecurityControl": "Ignore"
+      },
+      "properties": {
+        "ipAddresses": "[variables('denyPublicDnsIpAddresses')]"
+      }
+    },
+    {
+      "type": "Microsoft.Network/ipGroups",
+      "apiVersion": "2024-05-01",
+      "name": "ipg-bad-public-ips",
+      "location": "[parameters('location')]",
+      "tags": {
+        "SecurityControl": "Ignore"
+      },
+      "properties": {
+        "ipAddresses": "[variables('BadPublicIpsAddressGroup')]"
+      }
+    },
+    {
+      "type": "Microsoft.Network/firewallPolicies/ruleCollectionGroups",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}', parameters('firewallPolicyName'), 'XelaNatRules')]",
+      "properties": {
+        "priority": 100,
+        "ruleCollections": [
+          {
+            "name": "InboundNATRules",
+            "priority": 100,
+            "ruleCollectionType": "FirewallPolicyNatRuleCollection",
+            "action": {
+              "type": "DNAT"
+            },
+            "rules": [
+              {
+                "name": "InboundHubSSH",
+                "ruleType": "NatRule",
+                "sourceIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-public-dnat')]"
+                ],
+                "destinationAddresses": [
+                  "[reference(resourceId('Microsoft.Network/publicIPAddresses', format('{0}-fwIP', parameters('firewallName'))), '2024-05-01').ipAddress]"
+                ],
+                "destinationPorts": [
+                  "2221"
+                ],
+                "translatedAddress": "[parameters('linuxVMPrivIP')]",
+                "translatedPort": "22",
+                "ipProtocols": [
+                  "TCP"
+                ]
+              },
+              {
+                "name": "InboundRDPHubVM",
+                "ruleType": "NatRule",
+                "sourceIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-public-dnat')]"
+                ],
+                "destinationAddresses": [
+                  "[reference(resourceId('Microsoft.Network/publicIPAddresses', format('{0}-fwIP', parameters('firewallName'))), '2024-05-01').ipAddress]"
+                ],
+                "destinationPorts": [
+                  "3389"
+                ],
+                "translatedAddress": "[parameters('hubVMPrivIP')]",
+                "translatedPort": "3389",
+                "ipProtocols": [
+                  "TCP"
+                ]
+              },
+              {
+                "name": "InboundRDAppsVM",
+                "ruleType": "NatRule",
+                "sourceIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-public-dnat')]"
+                ],
+                "destinationAddresses": [
+                  "[reference(resourceId('Microsoft.Network/publicIPAddresses', format('{0}-fwIP', parameters('firewallName'))), '2024-05-01').ipAddress]"
+                ],
+                "destinationPorts": [
+                  "33890"
+                ],
+                "translatedAddress": "[parameters('hubVMPrivIP')]",
+                "translatedPort": "3389",
+                "ipProtocols": [
+                  "TCP"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/azureFirewalls', parameters('firewallName'))]",
+        "[resourceId('Microsoft.Network/firewallPolicies', parameters('firewallPolicyName'))]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-fwIP', parameters('firewallName')))]",
+        "[resourceId('Microsoft.Network/ipGroups', 'ipg-public-dnat')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/firewallPolicies/ruleCollectionGroups",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}', parameters('firewallPolicyName'), 'XelaDenyDirectDns')]",
+      "properties": {
+        "priority": 200,
+        "ruleCollections": [
+          {
+            "name": "DenyDNSFromSpokes",
+            "priority": 100,
+            "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+            "action": {
+              "type": "Deny"
+            },
+            "rules": [
+              {
+                "name": "DenyDNSToInternet",
+                "ruleType": "NetworkRule",
+                "ipProtocols": [
+                  "UDP",
+                  "TCP"
+                ],
+                "sourceIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-azure')]"
+                ],
+                "destinationIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-deny-public-dns')]"
+                ],
+                "destinationPorts": [
+                  "53"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/ipGroups', 'ipg-deny-public-dns')]",
+        "[resourceId('Microsoft.Network/firewallPolicies', parameters('firewallPolicyName'))]",
+        "[resourceId('Microsoft.Network/firewallPolicies/ruleCollectionGroups', parameters('firewallPolicyName'), 'XelaNatRules')]",
+        "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-azure')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/firewallPolicies/ruleCollectionGroups",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}', parameters('firewallPolicyName'), 'XelatNetworkRules')]",
+      "properties": {
+        "priority": 300,
+        "ruleCollections": [
+          {
+            "name": "BlacklistBadSites",
+            "priority": 100,
+            "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+            "action": {
+              "type": "Deny"
+            },
+            "rules": [
+              {
+                "name": "DenyToBadIP",
+                "ruleType": "NetworkRule",
+                "sourceIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-azure')]"
+                ],
+                "destinationIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-bad-public-ips')]"
+                ],
+                "destinationPorts": [
+                  "80",
+                  "443"
+                ],
+                "ipProtocols": [
+                  "TCP"
+                ]
+              }
+            ]
+          },
+          {
+            "name": "AllowNetworkRules",
+            "priority": 200,
+            "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+            "action": {
+              "type": "Allow"
+            },
+            "rules": [
+              {
+                "name": "AllowDNSToFirewall",
+                "ruleType": "NetworkRule",
+                "ipProtocols": [
+                  "UDP",
+                  "TCP"
+                ],
+                "sourceIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-azure')]"
+                ],
+                "destinationAddresses": [
+                  "[reference(resourceId('Microsoft.Network/azureFirewalls', parameters('firewallName')), '2024-05-01').ipConfigurations[0].properties.privateIPAddress]"
+                ],
+                "destinationPorts": [
+                  "53"
+                ]
+              },
+              {
+                "name": "AllowDNSFirewallToResolver",
+                "ruleType": "NetworkRule",
+                "ipProtocols": [
+                  "UDP",
+                  "TCP"
+                ],
+                "sourceAddresses": [
+                  "[reference(resourceId('Microsoft.Network/azureFirewalls', parameters('firewallName')), '2024-05-01').ipConfigurations[0].properties.privateIPAddress]"
+                ],
+                "destinationAddresses": [
+                  "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubVnetResourceGroup')), 'Microsoft.Network/dnsResolvers/inboundEndpoints', parameters('dnsResolverName'), 'inbound'), '2025-05-01').ipConfigurations[0].privateIpAddress]"
+                ],
+                "destinationPorts": [
+                  "53"
+                ]
+              },
+              {
+                "name": "AllowTrustedAzureTraffic",
+                "ruleType": "NetworkRule",
+                "ipProtocols": [
+                  "TCP",
+                  "UDP",
+                  "ICMP"
+                ],
+                "sourceIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-azure')]"
+                ],
+                "destinationIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-azure')]"
+                ],
+                "destinationPorts": [
+                  "22",
+                  "25",
+                  "53",
+                  "80",
+                  "88",
+                  "123",
+                  "135",
+                  "137",
+                  "139",
+                  "161",
+                  "389",
+                  "443",
+                  "445",
+                  "464",
+                  "636",
+                  "647",
+                  "1433",
+                  "3268",
+                  "3269",
+                  "3389",
+                  "5022",
+                  "5353",
+                  "5671",
+                  "8443",
+                  "9191",
+                  "9192",
+                  "9389",
+                  "9200-9400",
+                  "11000-11999",
+                  "49152-65535"
+                ]
+              },
+              {
+                "name": "AllowAzureToOnPrem",
+                "ruleType": "NetworkRule",
+                "ipProtocols": [
+                  "TCP",
+                  "UDP",
+                  "ICMP"
+                ],
+                "sourceIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-azure')]"
+                ],
+                "destinationIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-onprem')]"
+                ],
+                "destinationPorts": [
+                  "22",
+                  "25",
+                  "53",
+                  "80",
+                  "88",
+                  "123",
+                  "135",
+                  "137",
+                  "139",
+                  "161",
+                  "389",
+                  "443",
+                  "445",
+                  "464",
+                  "636",
+                  "647",
+                  "1433",
+                  "3268",
+                  "3269",
+                  "3389",
+                  "5022",
+                  "5353",
+                  "5671",
+                  "8443",
+                  "9191",
+                  "9192",
+                  "9389",
+                  "9200-9400",
+                  "11000-11999",
+                  "49152-65535"
+                ]
+              },
+              {
+                "name": "AllowOnPremToAzure",
+                "ruleType": "NetworkRule",
+                "ipProtocols": [
+                  "TCP",
+                  "UDP",
+                  "ICMP"
+                ],
+                "sourceIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-onprem')]"
+                ],
+                "destinationIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-azure')]"
+                ],
+                "destinationPorts": [
+                  "22",
+                  "25",
+                  "53",
+                  "80",
+                  "88",
+                  "123",
+                  "135",
+                  "137",
+                  "139",
+                  "161",
+                  "389",
+                  "443",
+                  "445",
+                  "464",
+                  "636",
+                  "647",
+                  "1433",
+                  "3268",
+                  "3269",
+                  "3389",
+                  "5022",
+                  "5353",
+                  "5671",
+                  "8443",
+                  "9191",
+                  "9192",
+                  "9389",
+                  "9200-9400",
+                  "11000-11999",
+                  "49152-65535"
+                ]
+              },
+              {
+                "ruleType": "NetworkRule",
+                "name": "AllowInternetUdpPorts",
+                "ipProtocols": [
+                  "UDP"
+                ],
+                "sourceAddresses": [],
+                "sourceIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-infra-servers')]"
+                ],
+                "destinationAddresses": [],
+                "destinationIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-internet-udp-ports')]"
+                ],
+                "destinationFqdns": [],
+                "destinationPorts": [
+                  "53",
+                  "123"
+                ]
+              },
+              {
+                "ruleType": "NetworkRule",
+                "name": "AllowInternetTcpPorts",
+                "ipProtocols": [
+                  "TCP"
+                ],
+                "sourceAddresses": [],
+                "sourceIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-infra-servers')]"
+                ],
+                "destinationAddresses": [],
+                "destinationIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-internet-tcp-ports')]"
+                ],
+                "destinationFqdns": [],
+                "destinationPorts": [
+                  "445",
+                  "9200",
+                  "9201"
+                ]
+              },
+              {
+                "ruleType": "NetworkRule",
+                "name": "AllowHTTP_TCP",
+                "ipProtocols": [
+                  "TCP"
+                ],
+                "sourceAddresses": [],
+                "sourceIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-infra-servers')]"
+                ],
+                "destinationAddresses": [],
+                "destinationIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-internet-http-port')]"
+                ],
+                "destinationFqdns": [],
+                "destinationPorts": [
+                  "80"
+                ]
+              },
+              {
+                "ruleType": "NetworkRule",
+                "name": "AllowHTTPS_UDP",
+                "ipProtocols": [
+                  "UDP"
+                ],
+                "sourceAddresses": [],
+                "sourceIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-infra-servers')]"
+                ],
+                "destinationAddresses": [],
+                "destinationIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-internet-https-port')]"
+                ],
+                "destinationFqdns": [],
+                "destinationPorts": [
+                  "443"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/ipGroups', 'ipg-bad-public-ips')]",
+        "[resourceId('Microsoft.Network/firewallPolicies/ruleCollectionGroups', parameters('firewallPolicyName'), 'XelaDenyDirectDns')]",
+        "[resourceId('Microsoft.Network/azureFirewalls', parameters('firewallName'))]",
+        "[resourceId('Microsoft.Network/firewallPolicies', parameters('firewallPolicyName'))]",
+        "[resourceId('Microsoft.Network/ipGroups', 'ipg-infra-servers')]",
+        "[resourceId('Microsoft.Network/ipGroups', 'ipg-internet-http-port')]",
+        "[resourceId('Microsoft.Network/ipGroups', 'ipg-internet-https-port')]",
+        "[resourceId('Microsoft.Network/ipGroups', 'ipg-internet-tcp-ports')]",
+        "[resourceId('Microsoft.Network/ipGroups', 'ipg-internet-udp-ports')]",
+        "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-azure')]",
+        "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-onprem')]"
+      ]
+    },
+    {
+      "condition": "[parameters('enableFwPublicDns')]",
+      "type": "Microsoft.Network/firewallPolicies/ruleCollectionGroups",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}', parameters('firewallPolicyName'), 'XelaBreakglassPublicDns')]",
+      "properties": {
+        "priority": 320,
+        "ruleCollections": [
+          {
+            "name": "AllowFWtoPublicDNS",
+            "priority": 100,
+            "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+            "action": {
+              "type": "Allow"
+            },
+            "rules": [
+              {
+                "name": "AllowFWtoPublicDNS",
+                "ruleType": "NetworkRule",
+                "ipProtocols": [
+                  "UDP",
+                  "TCP"
+                ],
+                "sourceAddresses": [
+                  "[reference(resourceId('Microsoft.Network/azureFirewalls', parameters('firewallName')), '2024-05-01').ipConfigurations[0].properties.privateIPAddress]"
+                ],
+                "destinationAddresses": [
+                  "1.1.1.1",
+                  "8.8.8.8"
+                ],
+                "destinationPorts": [
+                  "53"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/azureFirewalls', parameters('firewallName'))]",
+        "[resourceId('Microsoft.Network/firewallPolicies', parameters('firewallPolicyName'))]",
+        "[resourceId('Microsoft.Network/firewallPolicies/ruleCollectionGroups', parameters('firewallPolicyName'), 'XelatNetworkRules')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/firewallPolicies/ruleCollectionGroups",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}', parameters('firewallPolicyName'), 'XelaApplicationRules')]",
+      "properties": {
+        "priority": 400,
+        "ruleCollections": [
+          {
+            "name": "DenyWebFilterTraffic",
+            "priority": 100,
+            "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+            "action": {
+              "type": "Deny"
+            },
+            "rules": [
+              {
+                "ruleType": "ApplicationRule",
+                "name": "DenyWebFilterSites",
+                "protocols": [
+                  {
+                    "protocolType": "Https",
+                    "port": 443
+                  }
+                ],
+                "fqdnTags": [],
+                "webCategories": [
+                  "alcoholandtobacco",
+                  "childabuseimages",
+                  "criminalactivity",
+                  "datingandpersonals",
+                  "gambling",
+                  "hacking",
+                  "hateandintolerance",
+                  "illegaldrug",
+                  "illegalsoftware",
+                  "lingerieandswimsuits",
+                  "marijuana",
+                  "nudity",
+                  "pornographyandsexuallyexplicit"
+                ],
+                "targetFqdns": [],
+                "targetUrls": [],
+                "terminateTLS": false,
+                "sourceAddresses": [],
+                "destinationAddresses": [],
+                "sourceIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-azure')]"
+                ],
+                "httpHeadersToInsert": []
+              }
+            ]
+          },
+          {
+            "name": "AllowApplicationRules",
+            "priority": 200,
+            "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+            "action": {
+              "type": "Allow"
+            },
+            "rules": [
+              {
+                "ruleType": "ApplicationRule",
+                "name": "AllowWebTraffic",
+                "protocols": [
+                  {
+                    "protocolType": "Https",
+                    "port": 443
+                  }
+                ],
+                "fqdnTags": [],
+                "webCategories": [],
+                "targetFqdns": [
+                  "*"
+                ],
+                "targetUrls": [],
+                "terminateTLS": false,
+                "sourceAddresses": [],
+                "destinationAddresses": [],
+                "sourceIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-azure')]"
+                ],
+                "httpHeadersToInsert": []
+              },
+              {
+                "ruleType": "ApplicationRule",
+                "name": "AllowMicrosoftService",
+                "protocols": [
+                  {
+                    "protocolType": "Https",
+                    "port": 443
+                  }
+                ],
+                "fqdnTags": [
+                  "AppServiceEnvironment",
+                  "AzureBackup",
+                  "AzureKubernetesService",
+                  "HDInsight",
+                  "MicrosoftActiveProtectionService",
+                  "MicrosoftIntune",
+                  "Windows365",
+                  "WindowsDiagnostics",
+                  "WindowsUpdate",
+                  "WindowsVirtualDesktop",
+                  "citrixHdxPlusForWindows365",
+                  "Office365.Exchange.Optimize",
+                  "Office365.Exchange.Default.Required",
+                  "Office365.Exchange.Allow.Required",
+                  "Office365.Skype.Allow.Required",
+                  "Office365.Skype.Default.Required",
+                  "Office365.Skype.Default.NotRequired",
+                  "Office365.SharePoint.Optimize",
+                  "Office365.SharePoint.Default.NotRequired",
+                  "Office365.SharePoint.Default.Required",
+                  "Office365.Common.Allow.Required",
+                  "Office365.Common.Default.Required",
+                  "Office365.Common.Default.NotRequired"
+                ],
+                "webCategories": [],
+                "targetFqdns": [],
+                "targetUrls": [],
+                "terminateTLS": false,
+                "sourceAddresses": [],
+                "destinationAddresses": [],
+                "sourceIpGroups": [
+                  "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-azure')]"
+                ],
+                "httpHeadersToInsert": []
+              }
+            ]
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/firewallPolicies/ruleCollectionGroups', parameters('firewallPolicyName'), 'XelaBreakglassPublicDns')]",
+        "[resourceId('Microsoft.Network/firewallPolicies', parameters('firewallPolicyName'))]",
+        "[resourceId('Microsoft.Network/firewallPolicies/ruleCollectionGroups', parameters('firewallPolicyName'), 'XelatNetworkRules')]",
+        "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-azure')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubVnetResourceGroup')), 'Microsoft.Network/routeTables', parameters('routeTableName')), 'b24988ac-6180-42a0-ab88-20f7382dd24c', parameters('firewallPrincipalId'))]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+        "principalId": "[parameters('firewallPrincipalId')]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[resourceId('Microsoft.Network/azureFirewalls', parameters('firewallName'))]",
+      "name": "[parameters('diagnosticsName')]",
+      "properties": {
+        "workspaceId": "[parameters('logAnalyticsWorkspaceId')]",
+        "logs": [
+          {
+            "category": "AZFWNetworkRule",
+            "enabled": true
+          },
+          {
+            "category": "AZFWApplicationRule",
+            "enabled": true
+          },
+          {
+            "category": "AZFWNatRule",
+            "enabled": true
+          },
+          {
+            "category": "AZFWThreatIntel",
+            "enabled": true
+          },
+          {
+            "category": "AZFWIdpsSignature",
+            "enabled": true
+          },
+          {
+            "category": "AZFWDnsQuery",
+            "enabled": true
+          },
+          {
+            "category": "AZFWFqdnResolveFailure",
+            "enabled": true
+          },
+          {
+            "category": "AZFWFatFlow",
+            "enabled": true
+          },
+          {
+            "category": "AZFWFlowTrace",
+            "enabled": true
+          },
+          {
+            "category": "AZFWApplicationRuleAggregation",
+            "enabled": true
+          },
+          {
+            "category": "AZFWNetworkRuleAggregation",
+            "enabled": true
+          },
+          {
+            "category": "AZFWNatRuleAggregation",
+            "enabled": true
+          }
+        ],
+        "metrics": [
+          {
+            "category": "AllMetrics",
+            "enabled": true
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/azureFirewalls', parameters('firewallName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "rulesDeployment": {
+      "type": "string",
+      "value": "Rules deployed"
+    },
+    "firewallId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Network/azureFirewalls', parameters('firewallName'))]"
+    },
+    "firewallPublicIp": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', format('{0}-fwIP', parameters('firewallName'))), '2024-05-01').ipAddress]"
+    },
+    "firewallPrivateIPAddress": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Network/azureFirewalls', parameters('firewallName')), '2024-05-01').ipConfigurations[0].properties.privateIPAddress]"
+    },
+    "firewallFqdn": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', format('{0}-fwIP', parameters('firewallName'))), '2024-05-01').dnsSettings.fqdn]"
+    }
+  }
+}

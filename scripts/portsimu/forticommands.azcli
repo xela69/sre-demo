@@ -1,0 +1,674 @@
+# 1) IPsec tunnel interface (/30 + remote-ip)
+#PSK -- BU71Rz8Ra@J*nnOyA9QR
+
+config system interface
+  edit "azure-a-p1"
+    set ip 169.254.21.2/32
+    set remote-ip 169.254.21.1/32
+    set allowaccess ping
+  next
+end
+
+# 2) IPsec P1/P2 (PSK + selectors + NAT-T)
+
+# Phase1 (IKEv2)
+config vpn ipsec phase1-interface
+  edit "azure-a-p1"
+    set remote-gw 57.154.177.226
+    set ike-version 2
+    set net-device enable
+    set nattraversal enable
+    set dpd on-idle
+    set psksecret BU71Rz8Ra@J*nnOyA9QR
+    set proposal aes256-sha256 aes256-sha1 aes128-sha256 aes128-sha1
+    set dhgrp 14 2
+  next
+end
+
+# Phase2 (IPsec ESP)
+config vpn ipsec phase2-interface
+  edit "azure-a-p2"
+    set phase1name "azure-a-p1"
+    set proposal aes256-sha256 aes256-sha1 aes128-sha256 aes128-sha1
+    set pfs enable
+    set dhgrp 14 2
+    set keylifeseconds 3600
+    set src-subnet 0.0.0.0 0.0.0.0
+    set dst-subnet 0.0.0.0 0.0.0.0
+  next
+end
+# Clear any stale SAs and restart
+diagnose vpn ike gateway flush
+diagnose vpn ike gateway clear name azure-a-p1
+diagnose vpn ike restart
+
+#Actually originate the three on-prem /24s
+config router bgp
+  config network
+    edit 10 
+      set prefix 10.6.1.0 255.255.255.0     
+    next
+    edit 20
+      set prefix 172.16.110.0 255.255.255.0
+    next
+    edit 30
+      set prefix 172.17.110.0 255.255.255.0
+    next
+    # Optional: add 10.2.1.0/24 only if FortiWiFi clients must be reachable from Azure
+    edit 40
+      set prefix 10.2.1.0 255.255.255.0
+    next
+  show
+  end
+  config redistribute "connected" 
+    set status disable 
+    end
+  config redistribute "static"    
+    set status disable 
+  end
+end
+# 5) Make sure the neighbor is set for eBGP over a tunnel
+config router bgp
+  set as 65010
+  config neighbor
+    edit 10.50.3.30
+      set remote-as 65515
+      set update-source "azure-a-p1"
+      set ebgp-enforce-multihop enable
+    next
+  end
+end
+
+# 6) Clear BGP sessions with the correct syntax
+execute router clear bgp all
+
+# Bring-up / verify
+
+# IPsec
+get vpn ipsec tunnel summary
+diagnose vpn ike gateway list
+
+# BGP
+get router info bgp summary
+get router info bgp neighbors 10.50.3.30
+get router info bgp network  
+
+# Routing
+show router bgp 
+show router static
+
+diagnose debug reset
+diagnose debug application ike -1
+diagnose debug enable
+# wait 30–60s
+diagnose debug disable
+# 2) Clear SAs and restart IKE
+diagnose vpn ike gateway clear name azure-a-p1
+diagnose vpn ike restart
+
+show firewall policy | egrep -i "srcintf" -e "dstintf" -e "name" -e "status" -e "nat"
+show firewall policy 3    
+
+# On Azure (after IPsec comes up): You should see exactly: 10.6.1.0/24, 172.16.110.0/24, 172.17.110.0/24 (and Wi-Fi /24 only if you chose to advertise it).
+RG=networkRG
+GW=xelavpni5id
+CONN=XelaVPNConnection
+        # e.g., XelaVPNConnection
+LNG=xelalocalgw
+
+az network vnet-gateway list-learned-routes -g $RG -n $GW -o table
+
+az network vnet-gateway list-learned-routes -g $RG -n $GW -o table # Learned routes (what Azure sees from Forti)
+
+# Local Network Gateway (Forti side object)
+az network local-gateway show -g $RG -n $LNG --query "{pip:properties.gatewayIpAddress, asn:properties.bgpSettings.asn, peerIp:properties.bgpSettings.bgpPeeringAddress,addressSpace:properties.localNetworkAddressSpace.addressPrefixes}" -o json 
+
+# Connection status / IPsec policy
+az network vpn-connection show -g $RG -n $CONN --query "{status:properties.connectionStatus, enableBgp:properties.enableBgp, ipsec:properties.ipsecPolicies}" -o json
+
+#VPN gateway: BGP + PIPs
+az network vnet-gateway show -g $RG -n $GW --query "{sku:sku.name, enableBgp:properties.enableBgp, asn:properties.bgpSettings.asn,peerIps:properties.bgpSettings.bgpPeeringAddresses[].defaultBgpIpAddresses,ipConfigs:properties.ipConfigurations[].publicIpAddress.id}" -o json
+
+# Resolve attached public IP(s)
+for id in $(az network vnet-gateway show -g $RG -n $GW --query "ipConfigurations[].publicIpAddress.id" -o tsv); do
+  az network public-ip show --ids $id --query "{name:name, ip:ipAddress}" -o table
+done
+
+# on fortigate -- If IKE still sticks at “connecting”, we’ll turn on debug:
+diagnose debug enable
+diagnose debug console timestamp enable
+diagnose debug application ike -1
+# try to bring P1 up, then:
+diagnose debug disable
+
+#A) Pin a host route to Azure’s BGP IP through the tunnel + enable multihop
+# send packets for 10.50.3.30 into the IPsec tunnel
+config router static
+  edit 200
+    set dst 10.50.3.30 255.255.255.255
+    set device "azure-a-p1"
+  next
+end
+
+# neighbor settings
+config router bgp
+  config neighbor
+    edit 10.50.3.30
+      set update-source "azure-a-p1"
+      unset ebgp-enforce-multihop    # we dont need for BGP --set ebgp-enforce-multihop enable 
+      set route-map-out "RM-TO-AZURE"
+      set route-map-in  "RM-FROM-AZURE"
+    next
+  end
+end
+
+#BGP runtime (peering + routes)
+get router info bgp summary 
+get router info bgp neighbors 
+get router info bgp neighbors 10.50.3.30
+get router info bgp network 
+get router info routing-table bgp 
+get router info routing-table all 
+diagnose sniffer packet azure-a-p1 "host 10.50.3.30 and port 179" 4 20
+get router info bgp summary 
+get router info bgp neighbors 10.50.3.30
+
+config router bgp
+  config network
+    show
+  end
+end
+
+# confirm tunnel is up and pointing to the new Azure PIP
+get vpn ipsec tunnel summary
+diagnose vpn ike gateway list | grep -i "remote:57.154.177.226"
+
+# 3) Verify the gateway now shows the NEW peer
+diagnose vpn ike gateway list | grep -i .187
+# ...should show 57.154.177.226
+
+# see BGP TCP/179 on the tunnel (you should see SYN, SYN/ACK, ACK)
+diagnose sniffer packet azure-a-p1 "host 10.50.0.4 and port 3389" 4 20
+
+# /32 route to Azure BGP IP via the tunnel and multihop enabled
+show router static | grep 10.50.3.30
+show router bgp | grep -A3 -n "edit 10.50.3.30"
+
+# BGP config (what we’ll advertise/accept)
+
+az network public-ip show --ids /subscriptions/155abeb8-c0a9-4927-a455-986a03026829/resourceGroups/NetworkRG/providers/Microsoft.Network/publicIPAddresses/xelavpnpipejx3 --query "{name:name, ip:ipAddress}" -o table
+
+az network local-gateway show -g $RG -n $LNG --query "{pip:properties.gatewayIpAddress, bgpPeer:properties.bgpSettings.bgpPeeringAddress}"
+
+#1) (Optional) tidy destination objects for Azure VNets
+config firewall address
+  edit "AZ-10.50.0.0_20" 
+    set subnet 10.50.0.0 255.255.240.0 
+  next
+  edit "AZ-10.51.0.0_20" 
+    set subnet 10.51.0.0 255.255.240.0 
+  next
+  edit "AZ-10.52.0.0_20" 
+    set subnet 10.52.0.0 255.255.240.0 
+  next
+  edit "AZ-10.53.0.0_20" 
+    set subnet 10.53.0.0 255.255.240.0 
+  next
+  edit "AZ-10.54.0.0_20" 
+    set subnet 10.54.0.0 255.255.240.0 
+  next
+end
+config firewall addrgrp
+  edit "AZURE-VNETS"
+    set member "AZ-10.50.0.0_20" "AZ-10.51.0.0_20" "AZ-10.52.0.0_20" "AZ-10.53.0.0_20" "AZ-10.54.0.0_20"
+  next
+end
+
+# 2) Forward policies (on-prem → Azure, no NAT)
+config firewall policy
+  # Wi-Fi -> Azure
+  edit 3
+    set name "WiFi->Azure"
+    set srcintf "wifi"
+    set dstintf "azure-a-p1"
+    set srcaddr "WIFI-10.2.1.0_24"
+    set dstaddr "AZURE-VNETS"      
+    set action accept
+    set schedule "always"
+    set service "ALL"
+    set nat disable
+  next
+
+  # internal2 -> Azure
+  edit 4
+    set name "Internal2->Azure"
+    set srcintf "internal2"
+    set dstintf "azure-a-p1"
+    set srcaddr "LAN2-10.6.1.0_24"
+    set dstaddr "AZURE-VNETS"      # or "all"
+    set action accept
+    set schedule "always"
+    set service "ALL"
+    set nat disable
+  next
+
+  # internal3 -> Azure
+  edit 5
+    unset status                   
+    set name "Internal3->Azure"
+    set srcintf "internal3"
+    set dstintf "azure-a-p1"
+    set srcaddr "LAN3-172.16.110.0_24"
+    set dstaddr "AZURE-VNETS"     
+    set action accept
+    set schedule "always"
+    set service "ALL"
+    set nat disable
+  next
+
+  # internal4 -> Azure
+  edit 6
+    unset status
+    set name "Internal4->Azure"
+    set srcintf "internal4"
+    set dstintf "azure-a-p1"
+    set srcaddr "LAN4-172.17.110.0_24"
+    set dstaddr "AZURE-VNETS"      # or "all"
+    set action accept
+    set schedule "always"
+    set service "ALL"
+    set nat disable
+  next
+end
+#3) Return policies (Azure-initiated → on-prem, no NAT)
+config firewall policy
+  # Azure -> Wi-Fi
+  edit 7
+    unset status                   
+    set name "Azure->WiFi"
+    set srcintf "azure-a-p1"
+    set dstintf "wifi"
+    set srcaddr "AZURE-VNETS"      
+    set dstaddr "WIFI-10.2.1.0_24"
+    set action accept
+    set schedule "always"
+    set service "ALL"
+    set nat disable
+  next
+
+  # Azure -> internal2
+  edit 8
+    unset status
+    set name "Azure->Internal2"
+    set srcintf "azure-a-p1"
+    set dstintf "internal2"
+    set srcaddr "AZURE-VNETS"      
+    set dstaddr "LAN2-10.6.1.0_24"
+    set action accept
+    set schedule "always"
+    set service "ALL"
+    set nat disable
+  next
+
+  # Azure -> internal3
+  edit 9
+    unset status
+    set name "Azure->Internal3"
+    set srcintf "azure-a-p1"
+    set dstintf "internal3"
+    set srcaddr "AZURE-VNETS"
+    set dstaddr "LAN3-172.16.110.0_24"
+    set action accept
+    set schedule "always"
+    set service "ALL"
+    set nat disable
+  next
+
+  # Azure -> internal4
+  edit 10
+    unset status
+    set name "Azure->Internal4"
+    set srcintf "azure-a-p1"
+    set dstintf "internal4"
+    set srcaddr "AZURE-VNETS"
+    set dstaddr "LAN4-172.17.110.0_24"
+    set action accept
+    set schedule "always"
+    set service "ALL"
+    set nat disable
+  next
+end
+
+#4) Order matters
+config firewall policy
+  move 3  top
+  move 4  after 3
+  move 5  after 4
+  move 6  after 5
+  move 7  after 6
+  move 8  after 7
+  move 9  after 8
+  move 10 after 9
+end
+# policy list
+# show the four forward + four return rules
+show firewall policy 2
+show firewall policy 3
+show firewall policy 4
+show firewall policy 5
+show firewall policy 6
+show firewall policy 7
+show firewall policy 8
+show firewall policy 9
+show firewall policy 10
+
+# test from on-prem host (advertised subnet) to Azure VM
+# Windows:
+Test-NetConnection 10.50.0.4 -Port 3389
+# Forti sniffer:
+diagnose sniffer packet azure-a-p1 "host 10.50.0.4 and port 3389" 4 20
+
+# Quick “which policy did my flow hit?” check
+diagnose debug flow filter clear
+diagnose debug flow filter addr 10.50.0.4
+diagnose sniffer packet azure-a-p1 "host 10.50.3.30 and port 179" 4 20
+diagnose debug flow trace start 20
+diagnose debug enable
+# try RDP, then:
+diagnose debug disable
+
+
+# 1) Steer Azure traffic into the tunnel (until BGP comes up) -- # VM’s VNet (10.50.0.0/20)
+config router static
+  edit 240
+    set dst 10.50.0.0 255.255.240.0    
+    set device "azure-a-p1"
+  next
+end
+# 2) Advertise your Wi-Fi /24 so Azure can reply
+config router bgp
+  config network
+    edit 40
+      set prefix 10.2.1.0 255.255.255.0
+    next
+  end
+end
+
+# keep this host route so BGP packets use the tunnel,  # should show /32 via azure-a-p1
+show router static | grep 10.50.3.30   
+
+# neighbor with multihop + tunnel as source
+config router bgp
+  config neighbor
+    edit 10.50.3.30
+      set remote-as 65515
+      set update-source "azure-a-p1"
+      set ebgp-enforce-multihop enable
+    next
+  end
+end
+
+# BGP message block at fortigate
+# 1) Confirm the exact neighbor and state (fresh)
+get router info bgp summary
+get router info bgp neighbors 10.50.3.30
+
+# You should see: BGP state = Established, PfxRcd > 0
+
+# 2) Make sure the neighbor is defined exactly once and on the right VDOM
+show router bgp
+# ...should include:
+#   config neighbor
+#     edit 10.50.3.30
+#       set remote-as 65515
+#       set update-source "azure-a-p1"
+#       set ebgp-enforce-multihop enable
+
+# 3) Verify the /32 static so TCP/179 uses the tunnel
+show router static | grep 10.50.3.30
+# Should show: 10.50.3.30/32 via azure-a-p1
+
+# Fix: explicitly allow BGP to the Forti on the IPsec interface
+show firewall local-in-policy 1
+
+
+# 1) Address object for Azure BGP IP
+config firewall address
+  edit "AZURE-BGP-IP"
+    set subnet 10.50.3.30 255.255.255.255
+  next
+end
+
+# 2) Service object for BGP (exists on most boxes; create if missing)
+show firewall service custom BGP
+# if missing:
+config firewall service custom
+  edit "BGP"
+    set tcp-portrange 179
+  next
+end
+
+# 3) Allow BGP from Azure over the tunnel to the Forti itself
+
+# 5) Nudge the session
+execute router clear bgp neighbor 10.50.3.30 soft in
+execute router clear bgp neighbor 10.50.3.30 soft out
+# Clear *all* BGP sessions (works on all recent FortiOS)
+execute router clear bgp all
+# or per neighbor on many builds:
+execute router clear bgp 10.50.3.30  
+# You should now see SYN, SYN-ACK, ACK
+diagnose sniffer packet azure-a-p1 "host 10.50.3.30 and port 179" 4 20
+
+get router info bgp summary
+get router info bgp neighbors 10.50.3.30
+get router info bgp network
+
+# 1) Allow BGP to the Forti on the IPsec interface --(optional) check if local-in is being enforced
+show system settings | grep firewall-local-in-policy
+
+# If you see 'set firewall-local-in-policy enable', good. If not, you can enable it:
+# config system settings
+#   set firewall-local-in-policy enable
+# end
+
+# Address object for Azure’s BGP IP
+config firewall address
+  edit "AZURE-BGP-IP"
+    set subnet 10.50.3.30 255.255.255.255
+  next
+end
+
+# BGP service (exists on most boxes; create if missing)
+config firewall service custom
+  edit "BGP"
+    set tcp-portrange 179
+  next
+end
+
+# Local-in policy: allow BGP from Azure over the tunnel to *this Forti*
+config firewall local-in-policy 
+  edit 1
+    set intf "azure-a-p1"
+    set srcaddr "all"       #"AZURE-BGP-IP"
+    set dstaddr "all"
+    set service "all"           #"BGP"
+    set schedule "always"
+    set action accept
+  next
+end
+
+#  comes from 10.50.3.30:179 to Forti’s ephemeral port (dst ≠ 179) -- return on highports
+config firewall service custom 
+  edit "TCP-HIGH"
+    set tcp-portrange 1024-65535
+  next
+end
+config firewall local-in-policy
+  edit 2
+    set intf "azure-a-p1"
+    set srcaddr "all"       #"AZURE-BGP-IP"
+    set dstaddr "all"
+    set service "TCP-HIGH"
+    set schedule "always"   
+    set action accept
+  next
+end
+# expect: set firewall-local-in-policy enable|disable
+show system settings | grep firewall-local-in-policy 
+show firewall local-in-policy 1 
+show firewall service custom BGP 
+
+# you should now see SYN, SYN-ACK, ACK:
+diagnose sniffer packet azure-a-p1 "host 10.50.3.30 and port 179" 4 20
+
+# Clear any stale BGP state
+execute router clear bgp all 
+
+# Expect SYN, SYN-ACK, ACK now
+diagnose sniffer packet azure-a-p1 "host 10.50.3.30 and (port 179 or portrange 1024-65535)" 4 20
+
+execute router clear bgp all 
+diagnose sniffer packet azure-a-p1 "host 10.50.3.30 and (port 179 or portrange 1024-65535)" 4 20
+get router info bgp summary 
+get router info bgp neighbors 10.50.3.30
+# Check session
+get router info bgp summary
+get router info bgp neighbors 10.50.3.30
+get router info bgp network 
+
+#Runtime proof (does a local-in rule drop/allow TCP/179?)
+diagnose debug reset
+diagnose debug flow filter addr 10.50.3.30
+diagnose debug flow filter dport 179
+diagnose debug flow show console enable 
+diagnose debug flow trace start 20
+diagnose debug enable
+# wait a few seconds, then:
+diagnose debug disable
+
+# 1) Point Phase1 at the NEW Azure PIP
+config vpn ipsec phase1-interface
+  edit "azure-a-p1"
+    set remote-gw 57.154.177.226
+    set ike-version 2
+    set nattraversal enable
+    set dpd on-idle
+    set proposal aes256-sha256
+    set dhgrp 14
+    set psksecret <EXACT_AZURE_PSK>
+  next
+end
+
+# 2) Hard-clear old IKE/IPsec state
+diagnose vpn ike gateway flush
+diagnose vpn ike gateway clear name azure-a-p1
+diagnose vpn ike restart
+# (optional on some builds)
+# diagnose vpn tunnel reset name azure-a-p1
+
+# 3) Verify the gateway now shows the NEW peer
+diagnose vpn ike gateway list | grep -i "remote"
+diagnose vpn ike gateway list | grep -i "addr:"
+diagnose vpn ike gateway list | grep -i tun_id
+# ...should show 57.154.177.226
+
+# 4) Keep the /32 so BGP uses the tunnel
+# (you already have this, just confirming)
+show router static | grep 10.50.3.30      # expect /32 via azure-a-p1
+
+# 5) Make sure the neighbor is set for eBGP over a tunnel
+config router bgp
+  set as 65010
+  config neighbor
+    edit 10.50.3.30
+      set remote-as 65515
+      set update-source "azure-a-p1"
+      unset ebgp-enforce-multihop 
+    next
+  end
+end
+
+# 6) Clear BGP sessions with the correct syntax
+execute router clear bgp all
+
+show full-configuration | grep -i 13.83.2.187
+
+# From your Azure CLI shell, verify BGP is truly on and the peer is correct:
+# 1) VNet gateway BGP IPs (one or two; add both as neighbors on Forti if two are returned)
+RG=networkRG
+GW=xelavpni5id
+CONN=XelaVPNConnection
+        # e.g., XelaVPNConnection
+LNG=xelalocalgw
+az network vnet-gateway show -g $RG -n $GW --query "bgpSettings.bgpPeeringAddresses[].defaultBgpIpAddresses[]"
+
+# 2) Local Network Gateway’s BGP (your side)
+az network local-gateway show -g $RG -n $LNG --query "{asn:bgpSettings.asn, peer:bgpSettings.bgpPeeringAddress}"
+
+# 3) Connection must have BGP enabled
+az network vpn-connection show -g $RG -n $CONN --query "properties.enableBgp"
+# connection BGP toggle
+az network vpn-connection show -g $RG -n $CONN --query "{name:name, enableBgp:properties.enableBgp, status:properties.connectionStatus}"
+
+az network vpn-connection show -g $RG -n $CONN --query "{status:properties.connectionStatus, enableBgp:properties.enableBgp}" -o table
+az network vnet-gateway show -g $RG -n $GW --query "bgpSettings.bgpPeeringAddresses[].defaultBgpIpAddresses[]"
+# if enableBgp is not true:
+az network vpn-connection update -g $RG -n $CONN --enable-bgp true
+
+execute router clear bgp all
+diagnose sniffer packet azure-a-p1 "host 10.50.3.30 and port 179" 4 10
+get router info bgp summary
+
+# remove all bgp settings:
+config router bgp
+  config neighbor
+    delete 10.50.3.30
+  end
+  config network
+    delete 10
+    delete 20
+    delete 30
+    delete 40
+  end
+end
+
+config router route-map
+  delete "RM-TO-AZURE"
+  delete "RM-FROM-AZURE"
+end
+
+config router access-list
+  delete "TO-AZURE"
+  delete "FROM-AZURE"
+end
+
+# Flush any remaining BGP state
+execute router clear bgp all
+
+config router static
+  # Host route so control-plane to the gateway stays on the tunnel (harmless to keep)
+  edit 200
+    set dst 10.50.3.30 255.255.255.255
+    set device "azure-a-p1"
+  next
+
+  # Azure VNETs (example — use the actual Azure prefixes)
+  edit 240
+    set dst 10.50.0.0 255.255.240.0
+    set device "azure-a-p1"
+  next
+  # Add more if you have extra Azure subnets:
+  edit 241
+    set dst 10.51.0.0 255.255.240.0
+    set device "azure-a-p1"
+  next
+  edit 242
+    set dst 10.52.0.0 255.255.240.0
+    set device "azure-a-p1"
+  next
+end
+get router info routing-table all | grep 10\.50
+# Expect S routes for the Azure subnets via interface azure-a-p1
+
+diagnose sniffer packet azure-a-p1 "host 10.50.0.4" 4 5

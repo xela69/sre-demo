@@ -1,0 +1,65 @@
+Resources
+| project 
+	name,
+	type,
+	location,
+	resourceGroup,
+	subscriptionId,
+	sku = tostring(sku.name),
+	kind,
+	tags,
+	createdDate = properties.timeCreated,
+	provisioningState = tostring(properties.provisioningState)
+| sort by subscriptionId, resourceGroup, type
+# complete network resources
+Resources
+| where type startswith "Microsoft.Network/"
+| project 
+	name,
+	type,
+	location,
+	resourceGroup,
+	subscriptionId,
+	sku = tostring(sku.name),
+	kind,
+	tags,
+	provisioningState = tostring(properties.provisioningState),
+	additionalProperties = properties
+| sort by subscriptionId, resourceGroup, type
+# check for dianostic settings across all resources
+az monitor diagnostic-settings list --resource /subscriptions/07ee45c8-a780-4e1d-88cc-8af09bd76801/resourceGroups/CPS-NCUS/providers/Microsoft.Storage/storageAccounts/cpsdevdbstorage -o json
+# az graph query for diagnostic settings across all resources
+az graph query -q "
+resources
+| where type == 'microsoft.insights/diagnosticsettings'
+| extend workspaceId = tostring(properties.workspaceId)
+| where isnotempty(workspaceId)
+| extend monitoredResourceId = tostring(properties.scope)
+| project name, monitoredResourceId, workspaceId
+" --query "data[]" --output table
+
+az graph query -q "
+resources
+| where type == 'microsoft.insights/diagnosticsettings'
+| extend workspaceId = tostring(properties.workspaceId)
+| where isnotempty(workspaceId)
+| project name, id, type, workspaceId
+" --query "data[]" --output table
+
+az graph query -q "
+resources
+| where type == 'microsoft.insights/diagnosticsettings'
+| project name, id, type
+" --query "data[]" --output table
+
+# az graph query for configured log analytics workspaces
+az graph query -q "
+resources
+| where type == 'microsoft.operationalinsights/workspaces'
+| join kind=leftouter (resourcecontainers | where type == 'microsoft.resources/subscriptions' | project subscriptionId, subscriptionName = name) on subscriptionId
+| project name, resourceGroup, location, subscriptionId, subscriptionName
+" --query "data[]" --output table
+
+az storage container list --account-name azmigrate7149usa --auth-mode login --query "[?properties.publicAccess!=null].[name, properties.publicAccess]" --output table
+
+az storage account show --name azmigrate7149usa --query "networkRuleSet" --output table

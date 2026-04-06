@@ -1,0 +1,173 @@
+# github address to download fo files -- https://github.com/LinkedInLearning/building-infrastructure-as-code-iac-with-azure-bicep-part-1-4309168.git
+az login --use-device-code
+az account list --query "[].{Name:name, ID:id}" -o table
+az account set --subscription 
+az account list --all --output table
+az account show --query 'name' -o table
+az account show --query "{Name:name, ID:id}" -o table
+az account show --query "{ID:id, Name:name}" -o table
+clear
+
+sub_id=$(az account show --query 'id' -o tsv)
+echo $sub_id
+#
+# List all resource groups in the subscription
+az group list --output table
+az group create --location westus --resource-group xelademo -o table
+az group delete --name xelademo --no-wait --yes
+rg=$(az group list --query "[?name=='xelademo'].name" --output tsv); echo $rg
+rg=$(az group list --query "[].name" --output tsv); echo $rg
+
+# Validate the test bicep (dry run)
+az deployment group what-if -g $rg -f main.bicep --parameters adminPassword=Skynet2027
+deployContainerApp=false deployAppService=false 
+az deployment group validate -g $rg -f main.bicep --parameters deployContainerApp=false deployContainerApp=false adminPassword=Skynet2027
+
+manID=$(az identity show --name myAppManagedIdentity --resource-group $rg -o table);echo $manID
+az identity show --name myAppManagedIdentity --resource-group $rg --query "clientId" --output table
+az login --identity --username 79d42eb2-a88e-485f-8498-31d9d439d4ba
+az acr repository list --name acrd34c
+az containerapp logs show --name xelad34c --resource-group $rg
+
+/subscriptions/86d55e1e-4ca9-4ddd-85df-2e7633d77534/resourcegroups/xelademo/providers/Microsoft.ManagedIdentity/userAssignedIdentities/myAppManagedIdentity
+
+# Initial deployment to set up ACR and Managed Identity -- deployContainerApp=false 
+az deployment group create -g $rg -f main.bicep --parameters deployAppService=false adminPassword=Skynet2027
+
+# build and Deploy bicep file:
+az deployment group create -g $rg -f main.bicep --parameters adminPassword=Skynet2027
+
+../remove-all.sh
+
+az deployment group create -g $rg -f 1stLook/Ch01/simplestorage.bicep --output table
+# az deployment group create -g $rg -f storage.bicep -c --output table
+az deployment group create -g $rg -f infracode/infra-auto.bicep -c --parameters adminPassword=Skynet2027 -o table
+rg=$(az group list --query "[].name" --output tsv)
+echo $rg
+while IFS= read -r rg; do
+  echo "Deleting resource group: $rg"
+  az group delete --resource-group $rg --no-wait --yes
+done <<<"$rg"
+while; do
+  az group list --output table
+  sleep 2
+  clear
+done
+
+#
+#Use a Load Testing Tool:
+#	•	Apache JMeter: A desktop application for load testing.
+#	•	Siege: A command-line tool to generate HTTP load
+sudo apt-get install -y siege
+siege -c 100 -t 10M http://your-load-balancer-ip/
+
+#•	-c 100: Simulate 100 concurrent users.
+#	•	-t 10M: Run the test for 10 minutes
+
+#•	Azure Load Testing Service:
+#•	Use Azure’s Load Testing service to simulate high traffic to your application.
+
+az vmss reimage --resource-group $rg --name vmssEast
+
+az vmss show --resource-group $rg --name vmssEast --query "virtualMachineProfile.osProfile.customData" -o table
+
+VM_SIZE="Standard_B2ats_v2"; echo $VM_SIZE
+az vm list-skus --location centralus --query "[?name=='$VM_SIZE']" -o table
+az vm list-skus -l westus --query "[?name=='$VM_SIZE']" -o table
+
+az vm image list --publisher Canonical --all --query "[?contains(sku, '24_04') && architecture=='x64']" --output table
+
+az vm image list --publisher Canonical --all --query "[?contains(sku, '22_04') && architecture=='x64']" --output table
+
+az vm image show --location Westus --publisher Canonical --offer ubuntu-24_04-lts --sku server --version 'latest' --output table
+
+az vm show --resource-group $rg --name vmsswest --query "storageProfile.imageReference" --output json
+
+curl http://localhost
+curl -I http://www.google.com
+curl -I http://52.175.219.144
+ab -n 50000 -c 500 http://52.175.219.144/ &
+stress-ng --cpu 4 --cpu-load 100 --timeout 2200s 
+
+az webapp restart --name xelad34c --resource-group $rg
+az webapp restart --name xelad34c --resource-group <your-resource-group>
+# Get the ACR admin username and password
+az acr credential show --name acrd34c --query "{username: username, password: passwords[0].value}" --output table
+
+#    ========
+az login --use-device-code
+az group list --output table
+# Define resource group names and locations
+az group create --name networkRG --location westus -o table
+az group create --name vmRG --location westus  -o table
+az group create --name acrRG --location Westus -o table
+az group create --name storageRG --location westus -o table
+az group create --name appRG --location westus -o table
+rg=$(az group list --query "[?name=='vmRG'].name" --output tsv); echo $rg
+az group delete --resource-group "$rg" --no-wait --yes 
+# Since you’re deploying to multiple resource groups, you should run the deployment at the subscription scope (az deployment sub create) rather than the resource group scope (az deployment group create).
+az deployment sub create \
+  --location eastus \  # Location for deployment metadata
+  --template-file main.bicep \
+  --parameters networkResourceGroup='NetworkRG' computeResourceGroup='ComputeRG' location='East US'
+
+az deployment sub what-if --location westus --template-file main.bicep --parameters sshPublicKey="$(cat ~/.ssh/id_rsa.pub)"
+az deployment sub create --location westus --template-file main.bicep --parameters sshPublicKey="$(cat ~/.ssh/id_rsa.pub)" 
+#--mode Complete
+
+#--parameters networkResourceGroup='NetworkRG' computeResourceGroup='ComputeRG' location='East US'
+az deployment group create --resource-group $rg --template-file main.bicep --parameters deployVm=false adminPassword=Skynet2027 
+
+az deployment group create --resource-group $rg --template-file main.bicep --parameters adminPassword=Skynet2027
+
+rg=$(az group list --query "[?name=='vmRG'].name" --output tsv); echo $rg
+vmpubIP=$(az vm show -d -g $rg -n vmlssi0 --query publicIps -o tsv); echo $vmpubIP
+ssh -i ~/.ssh/id_rsa -p 50000 vmuser@213.66.199.94
+
+
+az vmss list-instances --resource-group $rg --name vmsswest2 --query "[].{InstanceID:id, State:instanceView.statuses[1].displayStatus}" -o table
+
+../remove-all.sh
+
+az acr build --registry acrmbpi --image $ACR_LOGIN_SERVER/xelatech-webapp:latest --file Dockerfile --platform linux/amd64 .
+
+docker buildx build --platform linux/amd64 -t $ACR_LOGIN_SERVER/xelatech-webapp:latest --no-cache --push .
+
+az webapp create --name <APP_NAME> --resource-group <RESOURCE_GROUP> --plan <APP_SERVICE_PLAN> --deployment-container-image-name <ACR_NAME>.azurecr.io/<IMAGE_NAME>:<TAG>
+# https://learn.microsoft.com/en-us/azure/container-apps/get-started?tabs=bash
+
+# If you want easier access to the VM without specifying the private key each time, add an entry in your SSH config file (~/.ssh/config):
+Host myAzureVM
+  HostName <VM-public-IP>
+  User azureuser
+  IdentityFile ~/.ssh/id_rsa
+
+ssh myAzureVM
+# Here’s an example of an NSG rule that allows SSH access only from a specific IP range:
+resource nsg 'Microsoft.Network/networkSecurityGroups@2024-01-01' = {
+  name: 'vmsswest2-nsg'
+  location: 'westus2'
+  properties: {
+    securityRules: [
+      {
+        name: 'AllowSSHFromSpecificIP'
+        priority: 1000
+        direction: 'Inbound'
+        access: 'Allow'
+        protocol: 'Tcp'
+        sourcePortRange: '*'
+        destinationPortRange: '22'
+        sourceAddressPrefix: '203.0.113.0/24' // Replace with your trusted IP range
+        destinationAddressPrefix: '*'
+      }
+    ]
+  }
+}
+
+VM_SIZE="Standard_B2ats_v2"; echo $VM_SIZE
+az vm list-skus --location centralus --query "[?name=='$VM_SIZE']" -o table
+az vm list-skus -l westus --query "[?name=='$VM_SIZE']" -o table
+
+# check the list of endpoint-service in a particular region:
+
+az network service-endpoint list --location westus --query "[].{Name:name, Service:serviceName}" -o table

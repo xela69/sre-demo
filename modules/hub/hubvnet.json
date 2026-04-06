@@ -1,0 +1,212 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.42.1.51946",
+      "templateHash": "9870977564555370004"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string"
+    },
+    "hubVnetName": {
+      "type": "string"
+    },
+    "addressSpace": {
+      "type": "string"
+    },
+    "subnetPrefixes": {
+      "type": "array"
+    },
+    "subnetNames": {
+      "type": "array"
+    },
+    "routeTableName": {
+      "type": "string"
+    },
+    "vpnGwRouteTableName": {
+      "type": "string"
+    },
+    "fwPrivateIP": {
+      "type": "string"
+    },
+    "enableFirewallRouting": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "logAnalyticsWorkspaceId": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "enableDiagnostics": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "Peering": {
+      "type": "bool",
+      "defaultValue": true
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/routeTables",
+      "apiVersion": "2024-07-01",
+      "name": "[parameters('routeTableName')]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "Service": "Network",
+        "CostCenter": "Infrastructure",
+        "Environment": "Production",
+        "SecurityControl": "Ignore"
+      },
+      "properties": {
+        "disableBgpRoutePropagation": false,
+        "routes": "[if(parameters('enableFirewallRouting'), createArray(createObject('name', format('{0}-to-onprem-fortiwifi', parameters('routeTableName')), 'properties', createObject('addressPrefix', '10.2.1.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-onprem-hq', parameters('routeTableName')), 'properties', createObject('addressPrefix', '10.6.1.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-onprem-dc1', parameters('routeTableName')), 'properties', createObject('addressPrefix', '172.16.110.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-onprem-dc2', parameters('routeTableName')), 'properties', createObject('addressPrefix', '172.17.110.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-hubAzFirewall', parameters('routeTableName')), 'properties', createObject('addressPrefix', '0.0.0.0/0', 'nextHopType', 'VirtualAppliance', 'nextHopIpAddress', parameters('fwPrivateIP')))), createArray())]"
+      }
+    },
+    {
+      "type": "Microsoft.Network/routeTables",
+      "apiVersion": "2024-07-01",
+      "name": "[parameters('vpnGwRouteTableName')]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "Service": "Network",
+        "CostCenter": "Infrastructure",
+        "Environment": "Production",
+        "SecurityControl": "Ignore"
+      },
+      "properties": {
+        "disableBgpRoutePropagation": false,
+        "routes": "[if(parameters('enableFirewallRouting'), createArray(createObject('name', format('{0}-to-hubVpnGateway', parameters('vpnGwRouteTableName')), 'properties', createObject('addressPrefix', '0.0.0.0/0', 'nextHopType', 'VirtualAppliance', 'nextHopIpAddress', parameters('fwPrivateIP')))), createArray())]"
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2024-07-01",
+      "name": "[parameters('hubVnetName')]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "Service": "Network",
+        "CostCenter": "Infrastructure",
+        "Environment": "Production",
+        "SecurityControl": "Ignore"
+      },
+      "properties": {
+        "copy": [
+          {
+            "name": "subnets",
+            "count": "[length(range(0, length(parameters('subnetNames'))))]",
+            "input": {
+              "name": "[parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]]]",
+              "properties": {
+                "addressPrefixes": [
+                  "[parameters('subnetPrefixes')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]]]"
+                ],
+                "privateEndpointNetworkPolicies": "[if(equals(parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]], 'privateEPSubnet'), 'Disabled', null())]",
+                "routeTable": "[if(not(contains(createArray('AzureFirewallSubnet', 'GatewaySubnet', 'privateEPSubnet', 'AzureBastionSubnet', 'appGatewaySubnet', 'dns-inbound', 'dns-outbound'), parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]])), createObject('id', resourceId('Microsoft.Network/routeTables', parameters('routeTableName'))), null())]",
+                "delegations": "[if(contains(createArray('dns-inbound', 'dns-outbound'), parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]]), createArray(createObject('name', format('dnsDelegation-{0}', parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]]), 'properties', createObject('serviceName', 'Microsoft.Network/dnsResolvers'))), if(contains(createArray('containerAppSubnet'), parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]]), createArray(createObject('name', format('containerAppsDelegation-{0}', parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]]), 'properties', createObject('serviceName', 'Microsoft.App/containerApps'))), null()))]"
+              }
+            }
+          }
+        ],
+        "addressSpace": {
+          "addressPrefixes": [
+            "[parameters('addressSpace')]"
+          ]
+        },
+        "dhcpOptions": "[if(parameters('enableFirewallRouting'), createObject('dnsServers', createArray(parameters('fwPrivateIP'))), null())]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/routeTables', parameters('routeTableName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('Peering')]",
+      "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+      "apiVersion": "2024-07-01",
+      "name": "[format('{0}/{1}', parameters('hubVnetName'), 'hub-to-Apps-VNet-peering')]",
+      "properties": {
+        "remoteVirtualNetwork": {
+          "id": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', '86d55e1e-4ca9-4ddd-85df-2e7633d77534', 'AppsRG'), 'Microsoft.Network/virtualNetworks', 'AppsRG-VNet')]"
+        },
+        "allowVirtualNetworkAccess": true,
+        "allowForwardedTraffic": true,
+        "allowGatewayTransit": true,
+        "useRemoteGateways": false
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', parameters('hubVnetName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('Peering')]",
+      "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+      "apiVersion": "2024-07-01",
+      "name": "[format('{0}/{1}', parameters('hubVnetName'), 'hub-to-Data-VNet-peering')]",
+      "properties": {
+        "remoteVirtualNetwork": {
+          "id": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', '8cbc59b1-7d9e-4cf1-8851-58fffe68fb79', 'DataRG'), 'Microsoft.Network/virtualNetworks', 'DataRG-VNet')]"
+        },
+        "allowVirtualNetworkAccess": true,
+        "allowForwardedTraffic": true,
+        "allowGatewayTransit": true,
+        "useRemoteGateways": false
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', parameters('hubVnetName'))]"
+      ]
+    },
+    {
+      "condition": "[and(parameters('enableDiagnostics'), not(empty(parameters('logAnalyticsWorkspaceId'))))]",
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[resourceId('Microsoft.Network/virtualNetworks', parameters('hubVnetName'))]",
+      "name": "[format('diag-{0}', parameters('hubVnetName'))]",
+      "properties": {
+        "workspaceId": "[parameters('logAnalyticsWorkspaceId')]",
+        "logs": [
+          {
+            "categoryGroup": "allLogs",
+            "enabled": true
+          }
+        ],
+        "metrics": [
+          {
+            "category": "AllMetrics",
+            "enabled": true
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', parameters('hubVnetName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "vnetId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Network/virtualNetworks', parameters('hubVnetName'))]"
+    },
+    "subnetIds": {
+      "type": "array",
+      "copy": {
+        "count": "[length(parameters('subnetNames'))]",
+        "input": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('hubVnetName'), parameters('subnetNames')[copyIndex()])]"
+      }
+    },
+    "privateEPSubnetIds": {
+      "type": "array",
+      "copy": {
+        "count": "[length(parameters('subnetNames'))]",
+        "input": "[if(equals(parameters('subnetNames')[copyIndex()], 'privateEPSubnet'), resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('hubVnetName'), parameters('subnetNames')[copyIndex()]), null())]"
+      }
+    },
+    "routeTableId": {
+      "type": "string",
+      "value": "[parameters('routeTableName')]"
+    }
+  }
+}

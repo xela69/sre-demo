@@ -1,0 +1,151 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "apiVersion": {
+            "value": "2025-05-01"
+        },
+        "resourceName": {
+            "value": "xelaCluster"
+        },
+        "location": {
+            "value": "westus2"
+        },
+        "dnsPrefix": {
+            "value": "xelaCluster-dns"
+        },
+        "kubernetesVersion": {
+            "value": "1.32.7"
+        },
+        "networkPlugin": {
+            "value": "azure"
+        },
+        "enableRBAC": {
+            "value": true
+        },
+        "nodeResourceGroup": {
+            "value": "MC_xela-aks_xelaCluster_centralus"
+        },
+        "clusterSku": {
+            "value": {
+                "name": "Base",
+                "tier": "Standard"
+            }
+        },
+        "upgradeChannel": {
+            "value": "patch"
+        },
+        "clusterIdentity": {
+            "value": {
+                "type": "SystemAssigned"
+            }
+        },
+        "adminGroupObjectIDs": {
+            "value": [
+                "365dbd55-3d98-4a82-933d-8f84de4577bb"
+            ]
+        },
+        "disableLocalAccounts": {
+            "value": true
+        },
+        "azureRbac": {
+            "value": false
+        },
+        "enableOmsAgent": {
+            "value": true
+        },
+        "isAvailabilityZoneEnabled": {
+            "value": true
+        },
+        "supportPlan": {
+            "value": "KubernetesOfficial"
+        },
+        "enableAadProfile": {
+            "value": true
+        },
+        "nodeOSUpgradeChannel": {
+            "value": "NodeImage"
+        },
+        "isPrivateClusterSupported": {
+            "value": true
+        },
+        "enablePrivateCluster": {
+            "value": true
+        },
+        "networkDataplane": {
+            "value": "azure"
+        },
+        "isAzurePolicySupported": {
+            "value": true
+        },
+        "enableAzurePolicy": {
+            "value": true
+        },
+        "nodeAutoProvisioningMode": {
+            "value": "Manual"
+        },
+        "isSecretStoreCSIDDriverSupported": {
+            "value": true
+        },
+        "enableSecretStoreCSIDriver": {
+            "value": false
+        },
+        "vmssNodePool": {
+            "value": true
+        },
+        "vnetSubnetID": {
+            "value": "/subscriptions/155abeb8-c0a9-4927-a455-986a03026829/resourceGroups/xela-aks/providers/Microsoft.Network/virtualNetworks/xela-aks-vnet/subnets/default"
+        },
+        "serviceCidr": {
+            "value": "10.0.0.0/16"
+        },
+        "dnsServiceIP": {
+            "value": "10.0.0.10"
+        },
+        "workspaceName": {
+            "value": "DefaultWorkspace-155abeb8-c0a9-4927-a455-986a03026829-WUS2"
+        },
+        "workspaceRegion": {
+            "value": "westus2"
+        },
+        "omsWorkspaceId": {
+            "value": "/subscriptions/155abeb8-c0a9-4927-a455-986a03026829/resourcegroups/DefaultResourceGroup-WUS2/providers/Microsoft.OperationalInsights/workspaces/DefaultWorkspace-155abeb8-c0a9-4927-a455-986a03026829-WUS2"
+        },
+        "aciVnetSubnetName": {
+            "value": "virtual-node-aci"
+        },
+        "aciConnectorLinuxEnabled": {
+            "value": true
+        },
+        "networkPolicy": {
+            "value": "azure"
+        },
+        "acrName": {
+            "value": "xelaReg"
+        },
+        "acrResourceGroup": {
+            "value": "xela-aks"
+        },
+        "isImageCleanerEnabled": {
+            "value": true
+        },
+        "imageCleanerIntervalHours": {
+            "value": 168
+        },
+        "enableOIDC": {
+            "value": true
+        },
+        "issuerURL": {
+            "value": ""
+        },
+        "enableWorkloadIdentity": {
+            "value": true
+        },
+        "clusterTags": {
+            "value": {}
+        },
+        "tagsForAllResources": {
+            "value": {}
+        }
+    }
+}

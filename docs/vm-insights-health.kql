@@ -1,0 +1,44 @@
+// VM Insights + Log Analytics health check (last 6 hours)
+// Update vmList as needed.
+let lookback = 6h;
+let vmList = dynamic(["hubVMpu54", "LinuxVMpu54"]);
+let hb = Heartbeat
+| where TimeGenerated > ago(lookback)
+| where Computer in~ (vmList)
+| summarize HeartbeatRows = count(), HeartbeatLastSeen = max(TimeGenerated) by Computer;
+let proc = VMProcess
+| where TimeGenerated > ago(lookback)
+| where Computer in~ (vmList)
+| summarize VMProcessRows = count(), VMProcessLastSeen = max(TimeGenerated) by Computer;
+let smp = ServiceMapProcess_CL
+| where TimeGenerated > ago(lookback)
+| where Computer in~ (vmList)
+| summarize ServiceMapProcessRows = count(), ServiceMapProcessLastSeen = max(TimeGenerated) by Computer;
+let smc = ServiceMapComputer_CL
+| where TimeGenerated > ago(lookback)
+| where Computer in~ (vmList)
+| summarize ServiceMapComputerRows = count(), ServiceMapComputerLastSeen = max(TimeGenerated) by Computer;
+let conn = VMConnection
+| where TimeGenerated > ago(lookback)
+| where Computer in~ (vmList)
+| summarize VMConnectionRows = count(), VMConnectionLastSeen = max(TimeGenerated) by Computer;
+print Computer = "hubVMpu54"
+| union (print Computer = "LinuxVMpu54")
+| join kind=leftouter hb on Computer
+| join kind=leftouter proc on Computer
+| join kind=leftouter smp on Computer
+| join kind=leftouter smc on Computer
+| join kind=leftouter conn on Computer
+| project
+    Computer,
+    HeartbeatRows = coalesce(HeartbeatRows, 0),
+    HeartbeatLastSeen,
+    VMProcessRows = coalesce(VMProcessRows, 0),
+    VMProcessLastSeen,
+    ServiceMapProcessRows = coalesce(ServiceMapProcessRows, 0),
+    ServiceMapProcessLastSeen,
+    ServiceMapComputerRows = coalesce(ServiceMapComputerRows, 0),
+    ServiceMapComputerLastSeen,
+    VMConnectionRows = coalesce(VMConnectionRows, 0),
+    VMConnectionLastSeen
+| order by Computer asc

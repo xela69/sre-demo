@@ -1,0 +1,225 @@
+# Login to Azure and deploy the bicep infrastructure
+az login --use-device-code
+az account list --output table
+az account list --query "[].{Name:name, ID:id}" -o table
+az account set --subscription 
+az account list --all --output table
+az account show --query 'name' -o table
+az account show --query "{Name:name, ID:id}" -o table
+az account show --query "{ID:id, Name:name}" -o table
+az account clear
+
+../scripts/remove-all.sh subs=$(az account list --query "[].id" -o tsv | paste -sd "," -)
+
+sub_id=$(az account show --query 'id' -o tsv); echo $sub_id
+#
+# List all resource groups in the subscription
+az account list --query "[].id" -o table
+
+for sub in $(az account list --query "[].id" -o tsv); do
+  echo "Resource Groups in subscription: $sub"
+  az group list --subscription $sub --output table
+  echo ""
+done
+
+az group list --output table
+az group create --location westus2 --resource-group acrRG -o table
+az group delete --name appRG --no-wait --yes
+rg=$(az group list --query "[?name=='xelademo'].name" --output tsv); echo $rg
+rg=$(az group list --query "[].name" --output tsv); echo $rg
+
+# Generate self-signed cert and the webapp key and crt file
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout webapp.key -out webapp.crt -subj "/CN=webapp.xelatech.net" -addext "subjectAltName=DNS:webapp.xelatech.net"
+
+# Convert cert/key into PFX (for secure binding in WAF/App Gateway) 
+openssl pkcs12 -export -out webapp.pfx -inkey webapp.key -in webapp.crt
+
+#  upload to keyvault
+az keyvault certificate import --vault-name xelavault5nwf --name xelaSslCert --file webapp.pfx --password "AnotherDayInParadise"
+
+# Retrieve the SecretId for your Bicep input:
+sslCertSecretId=$(az keyvault secret show --vault-name xelavault5nwf --name xelaSslCert --query 'id' -o tsv | sed 's|/[0-9a-f-]*$||'); echo $sslCertSecretId
+
+# ACR and KV deployment - set up adminPassword
+az deployment sub create --template-file subsmain.bicep --parameters  accessKey=$accessKey --what-if
+natPublicIP=$(curl -4 -s ifconfig.me)
+
+accessKey=$(python ../quickstart/pwdgen.py); echo $accessKey > pwd.txt
+az keyvault secret set --vault-name xelavault5nwf --name accesKey --description "Access for VMs, SQL, vpn" --value $(python ../quickstart/pwdgen.py)
+az keyvault secret list --vault-name xelavault5nwf --query "[].{Name:name, ID:id}" -o table
+accessKey=$(az keyvault secret show --vault-name xelavault5nwf --name accesKey --query "value" -o tsv); echo $accessKey
+
+#  upload to keyvault
+az keyvault certificate import --vault-name xelavault5nwf --name xelaSslCert --file webapp.pfx --password "AnotherDayInParadise"
+
+# call out the ACR username, password, and sslCertSecretId and accessKeys
+ACR_USERNAME=$(az acr credential show --name xelambpi --query username -o tsv);echo $ACR_USERNAME
+ACR_PASSWORD=$(az acr credential show --name xelambpi --query 'passwords[0].value' -o tsv);echo $ACR_PASSWORD
+sslCertSecretId=$(az keyvault secret show --vault-name xelavault5nwf --name xelaSslCert --query 'id' -o tsv | sed 's|/[0-9a-f-]*$||'); echo $sslCertSecretId
+accessKey=$(az keyvault secret show --vault-name xelavault5nwf --name accesKey --query "value" -o tsv); echo $accessKey
+
+# Validate the test bicep (dry run)
+az deployment sub create --template-file main.bicep --parameters sshPublicKey="$(cat ~/.ssh/id_rsa.pub)" publicIP=$(curl -4 -s ifconfig.me) acrUsername=$ACR_USERNAME acrPassword=$ACR_PASSWORD sslCertSecretId=$sslCertSecretId accessKey=$accessKey 
+--what-if
+
+az deployment sub validate --template-file main.bicep --parameters sshPublicKey="$(cat ~/.ssh/id_rsa.pub)" publicIP=$(curl -4 -s ifconfig.me) acrUsername=$ACR_USERNAME acrPassword=$ACR_PASSWORD sslCertSecretId=$sslCertSecretId accessKey=$accessKey 
+
+# check app service plan status
+az webapp log tail --name xeladhis --resource-group acrRG
+az webapp show --name xeladhis --resource-group acrRG --query identity
+# 3. Upload to Azure Key Vault
+az keyvault secret set --vault-name keyVaultskcw --name xelaSslCert --file xelaSslCert.pfx --encoding base64
+#get full keyvaultsecretId
+az keyvault secret list --vault-name keyVaultskcw --query "[].{Name:name, ID:id}" -o table
+sslCertSecretId=$(az keyvault secret list-versions --vault-name keyVaultskcw --name xelaSslCert --query "[0].id" -o tsv)
+echo $sslCertSecretId
+
+az deployment group create --resource-group appRG --template-file appservice.bicep --parameters publicIP="97.94.98.13"
+
+az deployment sub create \
+  --location westus2 \  # You MUST specify a location for subscription-level deployments
+  --template-file main.bicep \
+  --parameters \
+    sshPublicKey="$(cat ~/.ssh/id_rsa.pub)" \
+    sharedKey="$(openssl rand -base64 32)" \
+    publicIP="$(curl -4 -s ifconfig.me)" \
+  --mode Complete
+# what deployment was successful  
+az deployment sub list -o table
+az deployment sub show --name main -o table
+az deployment sub list --query "[].{Name:name, Timestamp:properties.timestamp, Status:properties.provisioningState}" --output table
+az deployment sub wait --name main --created
+
+
+../remove-all.sh
+
+# Deploy ACR build
+# Set environment variables for ACR and managed identity details
+RG=rg=$(az group list --query "[?name=='acrRG'].name" --output tsv);echo $RG
+ACR_NAME=$(az acr list --query "[].name" --output tsv); echo $ACR_NAME
+ACR_LOGIN_SERVER=$(az acr list --query "[].loginServer" --output tsv); echo $ACR_LOGIN_SERVER
+az acr login --name $ACR_NAME
+az acr repository list --name acrRG --output table
+docker buildx build --platform linux/amd64 -t $ACR_LOGIN_SERVER/xelatech-webapp:latest --no-cache --push .
+# Build and push the Docker image to ACR
+az acr build --registry $ACR_NAME --image $ACR_LOGIN_SERVER/xelatech-webapp:latest --file Dockerfile --platform linux/amd64 .
+
+
+# Test DNS resolution to private link
+nslookup xelaLogsezrz.ods.opinsights.azure.com
+===================================================================
+# Test ssh connection to the VM on thru az fiwrewall
+ssh -i ~/.ssh/id_rsa -p 2223 vmuser@172.171.102.244
+
+az monitor diagnostic-settings show --resource $(az resource show --name AzFirewall --resource-type "Microsoft.Network/azureFirewalls" --query id -o tsv) --name fw-log-analytics
+
+az keyvault secret set --vault-name keyVaultskcw --name vmuser --value 'S3cur3!P@ssw0rd'
+
+az monitor diagnostic-settings categories list --resource /subscriptions/86d55e1e-4ca9-4ddd-85df-2e7633d77534/resourceGroups/networkRG/providers/Microsoft.Network/bastionHosts/xelaBastion
+
+nslookup xelastorage.blob.core.windows.net
+curl -v https://xelastorage.blob.core.windows.net
+
+az monitor diagnostic-settings categories list --resource "/subscriptions/86d55e1e-4ca9-4ddd-85df-2e7633d77534/resourceGroups/vmRG/providers/Microsoft.Compute/virtualMachines/<vmName>"
+
+az monitor diagnostic-settings categories list --resource "/subscriptions/86d55e1e-4ca9-4ddd-85df-2e7633d77534/resourceGroups/vmRG/providers/Microsoft.Compute/virtualMachines/linuxappWestSubnet-pjda"
+
+az network private-dns link vnet list --resource-group networkRG --zone-name privatelink.vaultcore.windows.net --output table
+
+az network private-dns link vnet list --resource-group networkRG --zone-name privatelink.vaultcore.azure.net --output table
+
+curl -I ncusappextdevreports.privatelink.blob.core.windows.net
+
+curl -I -k https://ncusappextdevreports.privatelink.blob.core.windows.net
+Test-NetConnection -ComputerName 10.1.0.5 -Port 3389
+
+az network vnet update --resource-group networkRG --name dataVnet --dns-servers 10.1.2.4
+# resize the vm
+az vm stop --resource-group CPS-NCUS-Infra-VM --name hubVM
+az vm start --resource-group CPS-NCUS-Infra-VM --name hubVM
+az vm deallocate --resource-group CPS-NCUS-Infra-VM --name devopsVM
+az vm resize --resource-group vmRG --name windows-rn5w --size Standard_B2ms
+az vm start --resource-group vmRG --name windows-rn5w
+
+mstsc.exe /v:4.155.248.201:3391
+
+az vm list-skus --location centralus --size Standard_B2ms --output table
+az vm list-skus --location westus2 --size Standard_E2ads_v5 --output table
+
+az vm list-skus --location westus2 --resource-type "virtualMachines" --query "[?capabilities[?name=='vCPUs' && value=='4'] && capabilities[?name=='MemoryGB' && value=='16']].{Name:name, vCPUs:[?capabilities[?name=='vCPUs']].value | [0], MemoryGB:[?capabilities[?name=='MemoryGB']].value | [0], Restrictions:restrictions}" --output json | egrep -v westus2
+
+# generate ssl cert for app service
+# 1. Generate private key and certificate
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout xela.key -out xela.crt -subj "/CN=app.xelatech.net"
+
+# 2. Convert to .pfx
+openssl pkcs12 -export -out xelaSslCert.pfx -inkey xela.key -in xela.crt
+# 3. Upload to Azure Key Vault
+az keyvault secret set --vault-name xelavault --name xelaSslCert --file xelaSslCert.pfx --encoding base64
+#get full keyvaultsecretId
+az keyvault secret list --vault-name xelavault --query "[].{Name:name, ID:id}" -o table
+az keyvault secret list-versions --vault-name xelavault --name xelaSslCert --query "[0].id" -o tsv
+
+
+az network application-gateway show-backend-health --resource-group securityRG --name xelawafgw --query "backendAddressPools[*].backendHttpSettingsCollection[*].servers[*].health" --output table
+
+
+az rest --method GET --uri "https://graph.microsoft.com/v1.0/servicePrincipals?\$filter=appId eq 'abfa0a7c-a6b6-4736-8310-5855508787cd'" --query "value[0].id" -o tsv
+
+# Use this Bicep snippet for Microsoft.Web SP (hardcoded for now): 164241dd-bd5a-4b9a-9d38-e987795b357e
+
+
+
+# Generate new key and CSR with correct EKU
+openssl req -new -newkey rsa:2048 -nodes -keyout webapp.key -out webapp.csr -subj "/CN=webapp.xelatech.net"
+
+# Self-sign the cert with the required EKU
+openssl x509 -req -days 365 -in webapp.csr -signkey webapp.key -out webapp.crt -extfile <(printf "extendedKeyUsage=serverAuth")
+
+# Kill Vnet Peering and recreate
+
+az network vnet peering list --resource-group networkRG --vnet-name HubVnet --output table
+
+az network vnet peering delete --resource-group networkRG --vnet-name HubVnet --name HubVnet-To-AppsVnet
+az network vnet peering delete --resource-group networkRG --vnet-name appVnet --name AppsVnet-To-HubVnetPeering
+
+az network vnet peering create --name HubVnet-To-AppsVnetPeering --resource-group networkRG --vnet-name HubVnet --remote-vnet appVnet --allow-vnet-access
+
+az network vnet peering create --name AppsVnet-To-HubVnetPeering --resource-group networkRG --vnet-name appVnet --remote-vnet HubVnet --allow-vnet-access
+
+
+az webapp show --name xelawebgkqf --resource-group appRG --query customDomainVerificationId --output tsv
+# use this verification token to create CNAME record in DNS -- 3BE8C67D301CE0B9B60795A106F13746A92425CD7758826EABA6D518E567D125
+
+az network vpn-connection show --resource-group networkRG --name XelaVPNConnection --output table
+
+az network vpn-connection list-ike-sas --resource-group networkRG --name XelaVPNConnection --output table
+az network vpn-gateway connection list --resource-group networkRG --gateway-name GatewaySubnet --output table
+az network vnet-gateway disconnect-vpn-connections --resource-group networkRG --gateway-name xelavpnrpxq --output table
+
+# If you ever want to assign a route table after the subnet already exists, you can use a separate resource like: just reference the existing VNet and subnet, and then assign the route table to the subnet.
+resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' existing = {
+  name: 'vnetName'
+  scope: resourceGroup('resourceGroupName')
+}
+resource routeTable 'Microsoft.Network/routeTables@2024-07-01' existing = {
+  name: 'routeTableName'
+  scope: resourceGroup('resourceGroupName')
+}
+# Assign the route table to the existing subnet
+resource subnetWithRouteTable 'Microsoft.Network/virtualNetworks/subnets@2024-07-01' = {
+  name: 'subnetName'
+  parent: vnet
+  properties: {
+    ...
+    routeTable: { id: routeTable.id }
+  }
+}
+# Create resource groups for each subscription
+for sub in <subid-1> <subid-2> <subid-3>; do
+  az account set --subscription $sub
+  az group create --name CPS-NCUS-Apps --location eastus
+  az group create --name CPS-NCUS-Data --location westus
+  az group create --name CPS-NCUS-Infra --location centralus
+done
+

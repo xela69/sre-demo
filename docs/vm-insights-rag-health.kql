@@ -1,0 +1,61 @@
+// VM Insights RAG health summary (red/yellow/green)
+// Green  = all expected signals present and recent heartbeat
+// Yellow = heartbeat present but one or more VM Insights signals missing
+// Red    = no heartbeat in lookback window
+let lookback = 6h;
+let heartbeatFreshMinutes = 15m;
+let vmList = datatable(Computer:string) [
+  'hubVMpu54',
+  'LinuxVMpu54'
+];
+let hb = Heartbeat
+| where TimeGenerated > ago(lookback)
+| summarize HeartbeatRows = count(), HeartbeatLastSeen = max(TimeGenerated) by Computer;
+let proc = VMProcess
+| where TimeGenerated > ago(lookback)
+| summarize VMProcessRows = count(), VMProcessLastSeen = max(TimeGenerated) by Computer;
+let smp = ServiceMapProcess_CL
+| where TimeGenerated > ago(lookback)
+| summarize ServiceMapProcessRows = count(), ServiceMapProcessLastSeen = max(TimeGenerated) by Computer;
+let smc = ServiceMapComputer_CL
+| where TimeGenerated > ago(lookback)
+| summarize ServiceMapComputerRows = count(), ServiceMapComputerLastSeen = max(TimeGenerated) by Computer;
+let conn = VMConnection
+| where TimeGenerated > ago(lookback)
+| summarize VMConnectionRows = count(), VMConnectionLastSeen = max(TimeGenerated) by Computer;
+vmList
+| join kind=leftouter hb on Computer
+| join kind=leftouter proc on Computer
+| join kind=leftouter smp on Computer
+| join kind=leftouter smc on Computer
+| join kind=leftouter conn on Computer
+| extend HeartbeatRows = toint(coalesce(HeartbeatRows, 0))
+| extend VMProcessRows = toint(coalesce(VMProcessRows, 0))
+| extend ServiceMapProcessRows = toint(coalesce(ServiceMapProcessRows, 0))
+| extend ServiceMapComputerRows = toint(coalesce(ServiceMapComputerRows, 0))
+| extend VMConnectionRows = toint(coalesce(VMConnectionRows, 0))
+| extend MissingSignals = iif(VMProcessRows > 0, 0, 1)
+    + iif(ServiceMapProcessRows > 0, 0, 1)
+    + iif(ServiceMapComputerRows > 0, 0, 1)
+| extend HeartbeatFresh = iif(isnotempty(HeartbeatLastSeen) and HeartbeatLastSeen >= ago(heartbeatFreshMinutes), true, false)
+| extend Health = case(
+    HeartbeatRows == 0, 'RED',
+    HeartbeatFresh == false, 'YELLOW',
+    MissingSignals > 0, 'YELLOW',
+    'GREEN'
+  )
+| project
+    Computer,
+    Health,
+    HeartbeatRows,
+    HeartbeatLastSeen,
+    VMProcessRows,
+    VMProcessLastSeen,
+    ServiceMapProcessRows,
+    ServiceMapProcessLastSeen,
+    ServiceMapComputerRows,
+    ServiceMapComputerLastSeen,
+    VMConnectionRows,
+    VMConnectionLastSeen,
+    MissingSignals
+| order by Health asc, Computer asc
