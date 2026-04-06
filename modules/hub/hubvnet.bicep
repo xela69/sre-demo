@@ -50,7 +50,7 @@ resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
           {
             name: '${routeTableName}-to-onprem-dc2'
             properties: {
-              addressPrefix: '172.17.110.0/24' // DC-2
+              addressPrefix: '172.17.111.0/24' // DC-2
               nextHopType: 'VnetLocal'
             }
           }

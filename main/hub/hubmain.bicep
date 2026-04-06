@@ -39,7 +39,6 @@ var vmInsightsDcrName = 'MSVMI-xelaLogs${take(uniqueString(monitorRgName), 4)}'
 var vmInsightsPerfDcrName = 'MSVMI-Perf-xelaLogs${take(uniqueString(monitorRgName), 4)}'
 var hubVmName = 'hubVM${toLower(take(uniqueString(vmRgName), 4))}'
 var linuxVmName = 'LinuxVM${take(uniqueString(vmRgName), 4)}'
-var vpnGatewayName = 'xelavpng${take(uniqueString(hubRgName), 4)}'
 var firewallPublicIpName = 'xelaAzFirewall-fwIP'
 
 param hubSubnets array = [
@@ -1057,18 +1056,15 @@ module monitorDiag '../../modules/hub/monitor-diag.bicep' = if (deploylogsAnalyt
   dependsOn: [appInsights, vmDataCollectionRule]
 }
 
-module networkDiag '../../modules/hub/network-diag.bicep' = if (dnsresolver || deployFirewall || deployVpnGw) {
+module networkDiag '../../modules/hub/network-diag.bicep' = if (deployFirewall) {
   name: 'networkDiagModule'
   scope: resourceGroup(networkRGroup.name)
   params: {
     workspaceId: logsAnalytics!.outputs.resourceId
-    dnsresolver: dnsresolver
     deployFirewall: deployFirewall
-    deployVpnGw: deployVpnGw
     firewallPublicIpName: firewallPublicIpName
-    vpnGatewayName: vpnGatewayName
   }
-  dependsOn: [dnsResolver, dnsForwardingRuleset, firewall, vpngw]
+  dependsOn: [firewall]
 }
 
 module vmDiag '../../modules/hub/vm-diag.bicep' = if (deployVM) {

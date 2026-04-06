@@ -18,12 +18,6 @@ resource hubVmDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = 
   scope: hubVmExisting
   properties: {
     workspaceId: workspaceId
-    logs: [
-      {
-        categoryGroup: 'allLogs'
-        enabled: true
-      }
-    ]
     metrics: [
       {
         category: 'AllMetrics'
@@ -38,12 +32,6 @@ resource linuxVmDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' 
   scope: linuxVmExisting
   properties: {
     workspaceId: workspaceId
-    logs: [
-      {
-        categoryGroup: 'allLogs'
-        enabled: true
-      }
-    ]
     metrics: [
       {
         category: 'AllMetrics'
@@ -66,12 +54,6 @@ resource hubVmNicDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview'
   scope: hubVmNicExisting
   properties: {
     workspaceId: workspaceId
-    logs: [
-      {
-        categoryGroup: 'allLogs'
-        enabled: true
-      }
-    ]
     metrics: [
       {
         category: 'AllMetrics'
@@ -86,12 +68,6 @@ resource linuxVmNicDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-previe
   scope: linuxVmNicExisting
   properties: {
     workspaceId: workspaceId
-    logs: [
-      {
-        categoryGroup: 'allLogs'
-        enabled: true
-      }
-    ]
     metrics: [
       {
         category: 'AllMetrics'

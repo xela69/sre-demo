@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "18055009365954202291"
+      "templateHash": "4408783978687927650"
     }
   },
   "parameters": {
@@ -169,7 +169,6 @@
     "vmInsightsPerfDcrName": "[format('MSVMI-Perf-xelaLogs{0}', take(uniqueString(parameters('monitorRgName')), 4))]",
     "hubVmName": "[format('hubVM{0}', toLower(take(uniqueString(parameters('vmRgName')), 4)))]",
     "linuxVmName": "[format('LinuxVM{0}', take(uniqueString(parameters('vmRgName')), 4))]",
-    "vpnGatewayName": "[format('xelavpng{0}', take(uniqueString(parameters('hubRgName')), 4))]",
     "firewallPublicIpName": "xelaAzFirewall-fwIP"
   },
   "resources": [
@@ -315,7 +314,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "1414168736536092458"
+              "templateHash": "15047709170187170526"
             }
           },
           "parameters": {
@@ -374,7 +373,7 @@
               },
               "properties": {
                 "disableBgpRoutePropagation": false,
-                "routes": "[if(parameters('enableFirewallRouting'), createArray(createObject('name', format('{0}-to-onprem-fortiwifi', parameters('routeTableName')), 'properties', createObject('addressPrefix', '10.2.1.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-onprem-hq', parameters('routeTableName')), 'properties', createObject('addressPrefix', '10.6.1.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-onprem-dc1', parameters('routeTableName')), 'properties', createObject('addressPrefix', '172.16.110.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-onprem-dc2', parameters('routeTableName')), 'properties', createObject('addressPrefix', '172.17.110.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-hubAzFirewall', parameters('routeTableName')), 'properties', createObject('addressPrefix', '0.0.0.0/0', 'nextHopType', 'VirtualAppliance', 'nextHopIpAddress', parameters('fwPrivateIP')))), createArray())]"
+                "routes": "[if(parameters('enableFirewallRouting'), createArray(createObject('name', format('{0}-to-onprem-fortiwifi', parameters('routeTableName')), 'properties', createObject('addressPrefix', '10.2.1.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-onprem-hq', parameters('routeTableName')), 'properties', createObject('addressPrefix', '10.6.1.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-onprem-dc1', parameters('routeTableName')), 'properties', createObject('addressPrefix', '172.16.110.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-onprem-dc2', parameters('routeTableName')), 'properties', createObject('addressPrefix', '172.17.111.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-hubAzFirewall', parameters('routeTableName')), 'properties', createObject('addressPrefix', '0.0.0.0/0', 'nextHopType', 'VirtualAppliance', 'nextHopIpAddress', parameters('fwPrivateIP')))), createArray())]"
               }
             },
             {
@@ -30852,7 +30851,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "7127682296072432835"
+              "templateHash": "1630608111898870891"
             }
           },
           "parameters": {
@@ -30951,13 +30950,13 @@
               "10.2.1.0/24",
               "10.6.1.0/24",
               "172.16.110.0/24",
-              "172.17.110.0/24"
+              "172.17.111.0/24"
             ],
             "publicDnatNets": [
               "[parameters('natPublicIP')]"
             ],
             "umbrellaDnsIpAddresses": [
-              "172.17.110.0/24",
+              "172.17.111.0/24",
               "168.63.129.16"
             ],
             "denyPublicDnsIpAddresses": [
@@ -38478,7 +38477,7 @@
       ]
     },
     {
-      "condition": "[or(or(parameters('dnsresolver'), parameters('deployFirewall')), parameters('deployVpnGw'))]",
+      "condition": "[parameters('deployFirewall')]",
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "networkDiagModule",
@@ -38492,20 +38491,11 @@
           "workspaceId": {
             "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('monitorRgName')), 'Microsoft.Resources/deployments', 'logsModule'), '2025-04-01').outputs.resourceId.value]"
           },
-          "dnsresolver": {
-            "value": "[parameters('dnsresolver')]"
-          },
           "deployFirewall": {
             "value": "[parameters('deployFirewall')]"
           },
-          "deployVpnGw": {
-            "value": "[parameters('deployVpnGw')]"
-          },
           "firewallPublicIpName": {
             "value": "[variables('firewallPublicIpName')]"
-          },
-          "vpnGatewayName": {
-            "value": "[variables('vpnGatewayName')]"
           }
         },
         "template": {
@@ -38515,78 +38505,23 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "10047477532912575802"
+              "templateHash": "14760025600363391236"
             }
           },
           "parameters": {
             "workspaceId": {
               "type": "string"
             },
-            "dnsresolver": {
-              "type": "bool",
-              "defaultValue": true
-            },
             "deployFirewall": {
-              "type": "bool",
-              "defaultValue": true
-            },
-            "deployVpnGw": {
               "type": "bool",
               "defaultValue": true
             },
             "firewallPublicIpName": {
               "type": "string",
               "defaultValue": "xelaAzFirewall-fwIP"
-            },
-            "vpnGatewayName": {
-              "type": "string"
             }
           },
           "resources": [
-            {
-              "condition": "[parameters('dnsresolver')]",
-              "type": "Microsoft.Insights/diagnosticSettings",
-              "apiVersion": "2021-05-01-preview",
-              "scope": "[resourceId('Microsoft.Network/dnsResolvers', 'DnsResolver')]",
-              "name": "diag-dnsresolver",
-              "properties": {
-                "workspaceId": "[parameters('workspaceId')]",
-                "logs": [
-                  {
-                    "categoryGroup": "allLogs",
-                    "enabled": true
-                  }
-                ],
-                "metrics": [
-                  {
-                    "category": "AllMetrics",
-                    "enabled": true
-                  }
-                ]
-              }
-            },
-            {
-              "condition": "[parameters('dnsresolver')]",
-              "type": "Microsoft.Insights/diagnosticSettings",
-              "apiVersion": "2021-05-01-preview",
-              "scope": "[resourceId('Microsoft.Network/dnsForwardingRulesets', 'DnsResolver-ruleset')]",
-              "name": "diag-dnsruleset",
-              "properties": {
-                "workspaceId": "[parameters('workspaceId')]",
-                "logs": [
-                  {
-                    "categoryGroup": "allLogs",
-                    "enabled": true
-                  }
-                ],
-                "metrics": [
-                  {
-                    "category": "AllMetrics",
-                    "enabled": true
-                  }
-                ]
-              }
-            },
             {
               "condition": "[parameters('deployFirewall')]",
               "type": "Microsoft.Insights/diagnosticSettings",
@@ -38597,29 +38532,15 @@
                 "workspaceId": "[parameters('workspaceId')]",
                 "logs": [
                   {
-                    "categoryGroup": "allLogs",
+                    "category": "DDoSProtectionNotifications",
                     "enabled": true
-                  }
-                ],
-                "metrics": [
+                  },
                   {
-                    "category": "AllMetrics",
+                    "category": "DDoSMitigationFlowLogs",
                     "enabled": true
-                  }
-                ]
-              }
-            },
-            {
-              "condition": "[parameters('deployVpnGw')]",
-              "type": "Microsoft.Insights/diagnosticSettings",
-              "apiVersion": "2021-05-01-preview",
-              "scope": "[resourceId('Microsoft.Network/virtualNetworkGateways', parameters('vpnGatewayName'))]",
-              "name": "diag-vpngateway",
-              "properties": {
-                "workspaceId": "[parameters('workspaceId')]",
-                "logs": [
+                  },
                   {
-                    "categoryGroup": "allLogs",
+                    "category": "DDoSMitigationReports",
                     "enabled": true
                   }
                 ],
@@ -38635,12 +38556,9 @@
         }
       },
       "dependsOn": [
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubRgName')), 'Microsoft.Resources/deployments', 'dnsForwardingRulesetModule')]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubRgName')), 'Microsoft.Resources/deployments', 'dnsResolverModule')]",
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubRgName')), 'Microsoft.Resources/deployments', 'firewallModule')]",
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('monitorRgName')), 'Microsoft.Resources/deployments', 'logsModule')]",
-        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('hubRgName'))]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubRgName')), 'Microsoft.Resources/deployments', 'vpngwModule')]"
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('hubRgName'))]"
       ]
     },
     {
@@ -38675,7 +38593,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "4856599369910088384"
+              "templateHash": "10618629442383173686"
             }
           },
           "parameters": {
@@ -38702,12 +38620,6 @@
               "name": "diag-hubvm",
               "properties": {
                 "workspaceId": "[parameters('workspaceId')]",
-                "logs": [
-                  {
-                    "categoryGroup": "allLogs",
-                    "enabled": true
-                  }
-                ],
                 "metrics": [
                   {
                     "category": "AllMetrics",
@@ -38724,12 +38636,6 @@
               "name": "diag-linuxvm",
               "properties": {
                 "workspaceId": "[parameters('workspaceId')]",
-                "logs": [
-                  {
-                    "categoryGroup": "allLogs",
-                    "enabled": true
-                  }
-                ],
                 "metrics": [
                   {
                     "category": "AllMetrics",
@@ -38746,12 +38652,6 @@
               "name": "diag-hubvm-nic",
               "properties": {
                 "workspaceId": "[parameters('workspaceId')]",
-                "logs": [
-                  {
-                    "categoryGroup": "allLogs",
-                    "enabled": true
-                  }
-                ],
                 "metrics": [
                   {
                     "category": "AllMetrics",
@@ -38768,12 +38668,6 @@
               "name": "diag-linuxvm-nic",
               "properties": {
                 "workspaceId": "[parameters('workspaceId')]",
-                "logs": [
-                  {
-                    "categoryGroup": "allLogs",
-                    "enabled": true
-                  }
-                ],
                 "metrics": [
                   {
                     "category": "AllMetrics",
@@ -38790,76 +38684,6 @@
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('vmRgName')), 'Microsoft.Resources/deployments', 'LinuxVMModule')]",
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('monitorRgName')), 'Microsoft.Resources/deployments', 'logsModule')]",
         "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('vmRgName'))]"
-      ]
-    },
-    {
-      "condition": "[parameters('deployStorage')]",
-      "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2025-04-01",
-      "name": "storageDiagModule",
-      "resourceGroup": "[parameters('hubStorageRgName')]",
-      "properties": {
-        "expressionEvaluationOptions": {
-          "scope": "inner"
-        },
-        "mode": "Incremental",
-        "parameters": {
-          "workspaceId": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('monitorRgName')), 'Microsoft.Resources/deployments', 'logsModule'), '2025-04-01').outputs.resourceId.value]"
-          },
-          "deployStorage": {
-            "value": "[parameters('deployStorage')]"
-          }
-        },
-        "template": {
-          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-          "contentVersion": "1.0.0.0",
-          "metadata": {
-            "_generator": {
-              "name": "bicep",
-              "version": "0.42.1.51946",
-              "templateHash": "2771978766161186471"
-            }
-          },
-          "parameters": {
-            "workspaceId": {
-              "type": "string"
-            },
-            "deployStorage": {
-              "type": "bool",
-              "defaultValue": true
-            }
-          },
-          "resources": [
-            {
-              "condition": "[parameters('deployStorage')]",
-              "type": "Microsoft.Insights/diagnosticSettings",
-              "apiVersion": "2021-05-01-preview",
-              "scope": "[resourceId('Microsoft.Network/privateEndpoints', 'hubStorageBlobPE')]",
-              "name": "diag-storage-blob-pe",
-              "properties": {
-                "workspaceId": "[parameters('workspaceId')]",
-                "logs": [
-                  {
-                    "categoryGroup": "allLogs",
-                    "enabled": true
-                  }
-                ],
-                "metrics": [
-                  {
-                    "category": "AllMetrics",
-                    "enabled": true
-                  }
-                ]
-              }
-            }
-          ]
-        }
-      },
-      "dependsOn": [
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('monitorRgName')), 'Microsoft.Resources/deployments', 'logsModule')]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubStorageRgName')), 'Microsoft.Resources/deployments', 'hubStorageModule')]",
-        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('hubStorageRgName'))]"
       ]
     }
   ]

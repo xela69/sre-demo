@@ -180,14 +180,14 @@ var trustedOnPremSubnets = [
   '10.2.1.0/24' //FortiWifi Network
   '10.6.1.0/24' //HQ IPs
   '172.16.110.0/24' //DC-1
-  '172.17.110.0/24' //DC-2
+  '172.17.111.0/24' //DC-2
 ]
 var publicDnatNets = [
   natPublicIP // Home Vnet
   //'97.94.106.46' //Home Network
 ]
 var umbrellaDnsIpAddresses = [
-  '172.17.110.0/24' //onprem DNS
+  '172.17.111.0/24' //onprem DNS
   '168.63.129.16' //azuredns
 ]
 var denyPublicDnsIpAddresses = [

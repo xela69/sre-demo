@@ -84,7 +84,7 @@ subs=$(az account list --query "[?state=='Enabled'].id" -o tsv);echo $subs
 ./scripts/remove-all.sh
 
 # 1) Your tenant Private EP (should resolve private)
-nslookup <yourPE>.privatelink.vaultcore.azure.net
+nslookup hubstorela7oji.blob.core.windows.net
 
 # 2) Partner tenant SQL — forced public via ruleset
 nslookup sql-uat-abl-hw-cps.database.windows.net
