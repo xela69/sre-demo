@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "17979510758081148572"
+      "templateHash": "18055009365954202291"
     }
   },
   "parameters": {
@@ -66,6 +66,13 @@
     "sshPublicKey": {
       "type": "string"
     },
+    "keyVaultAdminObjectId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional Entra object ID for a human Key Vault administrator. Leave empty to skip this role assignment."
+      }
+    },
     "hubRgName": {
       "type": "string",
       "defaultValue": "hubRG"
@@ -104,11 +111,11 @@
     },
     "hubAddressSpace": {
       "type": "string",
-      "defaultValue": "10.0.0.0/20"
+      "defaultValue": "10.50.0.0/20"
     },
     "firewallPrivateIP": {
       "type": "string",
-      "defaultValue": "10.0.4.4"
+      "defaultValue": "10.50.4.4"
     },
     "hubLocation": {
       "type": "string",
@@ -119,42 +126,51 @@
       "defaultValue": [
         {
           "name": "vmSubnet",
-          "prefix": "10.0.0.0/24"
+          "prefix": "10.50.0.0/24"
         },
         {
           "name": "dns-inbound",
-          "prefix": "10.0.1.0/27"
+          "prefix": "10.50.1.0/27"
         },
         {
           "name": "dns-outbound",
-          "prefix": "10.0.2.0/27"
+          "prefix": "10.50.2.0/27"
         },
         {
           "name": "GatewaySubnet",
-          "prefix": "10.0.3.0/27"
+          "prefix": "10.50.3.0/27"
         },
         {
           "name": "AzureFirewallSubnet",
-          "prefix": "10.0.4.0/26"
+          "prefix": "10.50.4.0/26"
         },
         {
           "name": "AzureBastionSubnet",
-          "prefix": "10.0.5.0/27"
+          "prefix": "10.50.5.0/27"
         },
         {
           "name": "appGatewaySubnet",
-          "prefix": "10.0.6.0/27"
+          "prefix": "10.50.6.0/27"
         },
         {
           "name": "appSubnet",
-          "prefix": "10.0.7.0/24"
+          "prefix": "10.50.7.0/24"
         },
         {
           "name": "privateEPSubnet",
-          "prefix": "10.0.10.0/24"
+          "prefix": "10.50.10.0/24"
         }
       ]
     }
+  },
+  "variables": {
+    "appInsightsName": "[format('xelaAppsInsight{0}', take(uniqueString(parameters('monitorRgName')), 4))]",
+    "vmInsightsDcrName": "[format('MSVMI-xelaLogs{0}', take(uniqueString(parameters('monitorRgName')), 4))]",
+    "vmInsightsPerfDcrName": "[format('MSVMI-Perf-xelaLogs{0}', take(uniqueString(parameters('monitorRgName')), 4))]",
+    "hubVmName": "[format('hubVM{0}', toLower(take(uniqueString(parameters('vmRgName')), 4)))]",
+    "linuxVmName": "[format('LinuxVM{0}', take(uniqueString(parameters('vmRgName')), 4))]",
+    "vpnGatewayName": "[format('xelavpng{0}', take(uniqueString(parameters('hubRgName')), 4))]",
+    "firewallPublicIpName": "xelaAzFirewall-fwIP"
   },
   "resources": [
     {
@@ -299,7 +315,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "17098881549840596416"
+              "templateHash": "1414168736536092458"
             }
           },
           "parameters": {
@@ -341,7 +357,7 @@
             },
             "Peering": {
               "type": "bool",
-              "defaultValue": true
+              "defaultValue": false
             }
           },
           "resources": [
@@ -358,7 +374,7 @@
               },
               "properties": {
                 "disableBgpRoutePropagation": false,
-                "routes": "[if(parameters('enableFirewallRouting'), createArray(createObject('name', format('{0}-to-hubAzFirewall', parameters('routeTableName')), 'properties', createObject('addressPrefix', '0.0.0.0/0', 'nextHopType', 'VirtualAppliance', 'nextHopIpAddress', parameters('fwPrivateIP')))), createArray())]"
+                "routes": "[if(parameters('enableFirewallRouting'), createArray(createObject('name', format('{0}-to-onprem-fortiwifi', parameters('routeTableName')), 'properties', createObject('addressPrefix', '10.2.1.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-onprem-hq', parameters('routeTableName')), 'properties', createObject('addressPrefix', '10.6.1.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-onprem-dc1', parameters('routeTableName')), 'properties', createObject('addressPrefix', '172.16.110.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-onprem-dc2', parameters('routeTableName')), 'properties', createObject('addressPrefix', '172.17.110.0/24', 'nextHopType', 'VnetLocal')), createObject('name', format('{0}-to-hubAzFirewall', parameters('routeTableName')), 'properties', createObject('addressPrefix', '0.0.0.0/0', 'nextHopType', 'VirtualAppliance', 'nextHopIpAddress', parameters('fwPrivateIP')))), createArray())]"
               }
             },
             {
@@ -30836,7 +30852,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "12123236209988051785"
+              "templateHash": "7127682296072432835"
             }
           },
           "parameters": {
@@ -30926,10 +30942,10 @@
           },
           "variables": {
             "trustedAzureSubnets": [
-              "10.0.0.0/20",
-              "10.1.0.0/20",
-              "10.2.0.0/20",
-              "10.3.0.0/20"
+              "10.50.0.0/20",
+              "10.51.0.0/20",
+              "10.52.0.0/20",
+              "10.53.0.0/20"
             ],
             "trustedOnPremSubnets": [
               "10.2.1.0/24",
@@ -30959,10 +30975,10 @@
               "142.251.40.46"
             ],
             "infraServerSubnets": [
-              "10.0.0.0/24",
-              "10.1.0.0/24",
-              "10.2.0.0/24",
-              "10.3.0.0/24"
+              "10.50.0.0/24",
+              "10.51.0.0/24",
+              "10.52.0.0/24",
+              "10.53.0.0/24"
             ],
             "internetUdpPorts": [
               "168.61.215.74/32",
@@ -32018,43 +32034,7 @@
             }
           },
           "roleAssignments": {
-            "value": [
-              {
-                "principalId": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('securityRgName')), 'Microsoft.Resources/deployments', 'MgntIdentityModule'), '2025-04-01').outputs.kvPrincipalId.value]",
-                "roleDefinitionIdOrName": "Key Vault Secrets User",
-                "principalType": "ServicePrincipal"
-              },
-              {
-                "principalId": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('securityRgName')), 'Microsoft.Resources/deployments', 'MgntIdentityModule'), '2025-04-01').outputs.kvPrincipalId.value]",
-                "roleDefinitionIdOrName": "Key Vault Secrets Officer",
-                "principalType": "ServicePrincipal"
-              },
-              {
-                "principalId": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('securityRgName')), 'Microsoft.Resources/deployments', 'MgntIdentityModule'), '2025-04-01').outputs.kvPrincipalId.value]",
-                "roleDefinitionIdOrName": "Key Vault Administrator",
-                "principalType": "ServicePrincipal"
-              },
-              {
-                "principalId": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('securityRgName')), 'Microsoft.Resources/deployments', 'MgntIdentityModule'), '2025-04-01').outputs.kvPrincipalId.value]",
-                "roleDefinitionIdOrName": "Reader",
-                "principalType": "ServicePrincipal"
-              },
-              {
-                "principalId": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('securityRgName')), 'Microsoft.Resources/deployments', 'MgntIdentityModule'), '2025-04-01').outputs.wafPrincipalId.value]",
-                "roleDefinitionIdOrName": "Key Vault Secrets User",
-                "principalType": "ServicePrincipal"
-              },
-              {
-                "principalId": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('securityRgName')), 'Microsoft.Resources/deployments', 'MgntIdentityModule'), '2025-04-01').outputs.appsSvcPrincipalId.value]",
-                "roleDefinitionIdOrName": "Key Vault Secrets User",
-                "principalType": "ServicePrincipal"
-              },
-              {
-                "principalId": "a1a3e75f-2acf-49f2-abcf-ce9d14560aa7",
-                "roleDefinitionIdOrName": "Key Vault Administrator",
-                "principalType": "User"
-              }
-            ]
+            "value": "[concat(createArray(createObject('principalId', reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('securityRgName')), 'Microsoft.Resources/deployments', 'MgntIdentityModule'), '2025-04-01').outputs.kvPrincipalId.value, 'roleDefinitionIdOrName', 'Key Vault Secrets User', 'principalType', 'ServicePrincipal'), createObject('principalId', reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('securityRgName')), 'Microsoft.Resources/deployments', 'MgntIdentityModule'), '2025-04-01').outputs.kvPrincipalId.value, 'roleDefinitionIdOrName', 'Key Vault Secrets Officer', 'principalType', 'ServicePrincipal'), createObject('principalId', reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('securityRgName')), 'Microsoft.Resources/deployments', 'MgntIdentityModule'), '2025-04-01').outputs.kvPrincipalId.value, 'roleDefinitionIdOrName', 'Key Vault Administrator', 'principalType', 'ServicePrincipal'), createObject('principalId', reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('securityRgName')), 'Microsoft.Resources/deployments', 'MgntIdentityModule'), '2025-04-01').outputs.kvPrincipalId.value, 'roleDefinitionIdOrName', 'Reader', 'principalType', 'ServicePrincipal'), createObject('principalId', reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('securityRgName')), 'Microsoft.Resources/deployments', 'MgntIdentityModule'), '2025-04-01').outputs.wafPrincipalId.value, 'roleDefinitionIdOrName', 'Key Vault Secrets User', 'principalType', 'ServicePrincipal'), createObject('principalId', reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('securityRgName')), 'Microsoft.Resources/deployments', 'MgntIdentityModule'), '2025-04-01').outputs.appsSvcPrincipalId.value, 'roleDefinitionIdOrName', 'Key Vault Secrets User', 'principalType', 'ServicePrincipal')), if(empty(parameters('keyVaultAdminObjectId')), createArray(), createArray(createObject('principalId', parameters('keyVaultAdminObjectId'), 'roleDefinitionIdOrName', 'Key Vault Administrator', 'principalType', 'User'))))]"
           },
           "diagnosticSettings": {
             "value": [
@@ -35023,7 +35003,7 @@
         "mode": "Incremental",
         "parameters": {
           "name": {
-            "value": "[format('xelavpn{0}', take(uniqueString(parameters('hubRgName')), 4))]"
+            "value": "[format('xelavpng{0}', take(uniqueString(parameters('hubRgName')), 4))]"
           },
           "location": {
             "value": "[parameters('hubLocation')]"
@@ -38364,6 +38344,522 @@
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubRgName')), 'Microsoft.Resources/deployments', 'localGwModule')]",
         "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('hubRgName'))]",
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubRgName')), 'Microsoft.Resources/deployments', 'vpngwModule')]"
+      ]
+    },
+    {
+      "condition": "[parameters('deploylogsAnalytics')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "monitorDiagModule",
+      "resourceGroup": "[parameters('monitorRgName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "workspaceId": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('monitorRgName')), 'Microsoft.Resources/deployments', 'logsModule'), '2025-04-01').outputs.resourceId.value]"
+          },
+          "appInsightsName": {
+            "value": "[variables('appInsightsName')]"
+          },
+          "vmInsightsDcrName": {
+            "value": "[variables('vmInsightsDcrName')]"
+          },
+          "vmInsightsPerfDcrName": {
+            "value": "[variables('vmInsightsPerfDcrName')]"
+          },
+          "enableVmInsightsPerfDcr": {
+            "value": "[parameters('enableVmInsightsPerfDcr')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "4556805717157288658"
+            }
+          },
+          "parameters": {
+            "workspaceId": {
+              "type": "string"
+            },
+            "appInsightsName": {
+              "type": "string"
+            },
+            "vmInsightsDcrName": {
+              "type": "string"
+            },
+            "vmInsightsPerfDcrName": {
+              "type": "string"
+            },
+            "enableVmInsightsPerfDcr": {
+              "type": "bool",
+              "defaultValue": true
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Insights/diagnosticSettings",
+              "apiVersion": "2021-05-01-preview",
+              "scope": "[resourceId('Microsoft.Insights/components', parameters('appInsightsName'))]",
+              "name": "diag-appinsights",
+              "properties": {
+                "workspaceId": "[parameters('workspaceId')]",
+                "logs": [
+                  {
+                    "categoryGroup": "allLogs",
+                    "enabled": true
+                  }
+                ],
+                "metrics": [
+                  {
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Insights/diagnosticSettings",
+              "apiVersion": "2021-05-01-preview",
+              "scope": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('vmInsightsDcrName'))]",
+              "name": "diag-vminsights-map",
+              "properties": {
+                "workspaceId": "[parameters('workspaceId')]",
+                "logs": [
+                  {
+                    "categoryGroup": "allLogs",
+                    "enabled": true
+                  }
+                ],
+                "metrics": [
+                  {
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ]
+              }
+            },
+            {
+              "condition": "[parameters('enableVmInsightsPerfDcr')]",
+              "type": "Microsoft.Insights/diagnosticSettings",
+              "apiVersion": "2021-05-01-preview",
+              "scope": "[resourceId('Microsoft.Insights/dataCollectionRules', parameters('vmInsightsPerfDcrName'))]",
+              "name": "diag-vminsights-perf",
+              "properties": {
+                "workspaceId": "[parameters('workspaceId')]",
+                "logs": [
+                  {
+                    "categoryGroup": "allLogs",
+                    "enabled": true
+                  }
+                ],
+                "metrics": [
+                  {
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('monitorRgName')), 'Microsoft.Resources/deployments', 'appInsightsModule')]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('monitorRgName')), 'Microsoft.Resources/deployments', 'logsModule')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('monitorRgName'))]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('monitorRgName')), 'Microsoft.Resources/deployments', 'vmDataCollectionRuleModule')]"
+      ]
+    },
+    {
+      "condition": "[or(or(parameters('dnsresolver'), parameters('deployFirewall')), parameters('deployVpnGw'))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "networkDiagModule",
+      "resourceGroup": "[parameters('hubRgName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "workspaceId": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('monitorRgName')), 'Microsoft.Resources/deployments', 'logsModule'), '2025-04-01').outputs.resourceId.value]"
+          },
+          "dnsresolver": {
+            "value": "[parameters('dnsresolver')]"
+          },
+          "deployFirewall": {
+            "value": "[parameters('deployFirewall')]"
+          },
+          "deployVpnGw": {
+            "value": "[parameters('deployVpnGw')]"
+          },
+          "firewallPublicIpName": {
+            "value": "[variables('firewallPublicIpName')]"
+          },
+          "vpnGatewayName": {
+            "value": "[variables('vpnGatewayName')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "10047477532912575802"
+            }
+          },
+          "parameters": {
+            "workspaceId": {
+              "type": "string"
+            },
+            "dnsresolver": {
+              "type": "bool",
+              "defaultValue": true
+            },
+            "deployFirewall": {
+              "type": "bool",
+              "defaultValue": true
+            },
+            "deployVpnGw": {
+              "type": "bool",
+              "defaultValue": true
+            },
+            "firewallPublicIpName": {
+              "type": "string",
+              "defaultValue": "xelaAzFirewall-fwIP"
+            },
+            "vpnGatewayName": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "condition": "[parameters('dnsresolver')]",
+              "type": "Microsoft.Insights/diagnosticSettings",
+              "apiVersion": "2021-05-01-preview",
+              "scope": "[resourceId('Microsoft.Network/dnsResolvers', 'DnsResolver')]",
+              "name": "diag-dnsresolver",
+              "properties": {
+                "workspaceId": "[parameters('workspaceId')]",
+                "logs": [
+                  {
+                    "categoryGroup": "allLogs",
+                    "enabled": true
+                  }
+                ],
+                "metrics": [
+                  {
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ]
+              }
+            },
+            {
+              "condition": "[parameters('dnsresolver')]",
+              "type": "Microsoft.Insights/diagnosticSettings",
+              "apiVersion": "2021-05-01-preview",
+              "scope": "[resourceId('Microsoft.Network/dnsForwardingRulesets', 'DnsResolver-ruleset')]",
+              "name": "diag-dnsruleset",
+              "properties": {
+                "workspaceId": "[parameters('workspaceId')]",
+                "logs": [
+                  {
+                    "categoryGroup": "allLogs",
+                    "enabled": true
+                  }
+                ],
+                "metrics": [
+                  {
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ]
+              }
+            },
+            {
+              "condition": "[parameters('deployFirewall')]",
+              "type": "Microsoft.Insights/diagnosticSettings",
+              "apiVersion": "2021-05-01-preview",
+              "scope": "[resourceId('Microsoft.Network/publicIPAddresses', parameters('firewallPublicIpName'))]",
+              "name": "diag-azfw-pip",
+              "properties": {
+                "workspaceId": "[parameters('workspaceId')]",
+                "logs": [
+                  {
+                    "categoryGroup": "allLogs",
+                    "enabled": true
+                  }
+                ],
+                "metrics": [
+                  {
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ]
+              }
+            },
+            {
+              "condition": "[parameters('deployVpnGw')]",
+              "type": "Microsoft.Insights/diagnosticSettings",
+              "apiVersion": "2021-05-01-preview",
+              "scope": "[resourceId('Microsoft.Network/virtualNetworkGateways', parameters('vpnGatewayName'))]",
+              "name": "diag-vpngateway",
+              "properties": {
+                "workspaceId": "[parameters('workspaceId')]",
+                "logs": [
+                  {
+                    "categoryGroup": "allLogs",
+                    "enabled": true
+                  }
+                ],
+                "metrics": [
+                  {
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubRgName')), 'Microsoft.Resources/deployments', 'dnsForwardingRulesetModule')]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubRgName')), 'Microsoft.Resources/deployments', 'dnsResolverModule')]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubRgName')), 'Microsoft.Resources/deployments', 'firewallModule')]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('monitorRgName')), 'Microsoft.Resources/deployments', 'logsModule')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('hubRgName'))]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubRgName')), 'Microsoft.Resources/deployments', 'vpngwModule')]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployVM')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "vmDiagModule",
+      "resourceGroup": "[parameters('vmRgName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "workspaceId": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('monitorRgName')), 'Microsoft.Resources/deployments', 'logsModule'), '2025-04-01').outputs.resourceId.value]"
+          },
+          "deployVM": {
+            "value": "[parameters('deployVM')]"
+          },
+          "hubVmName": {
+            "value": "[variables('hubVmName')]"
+          },
+          "linuxVmName": {
+            "value": "[variables('linuxVmName')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "4856599369910088384"
+            }
+          },
+          "parameters": {
+            "workspaceId": {
+              "type": "string"
+            },
+            "deployVM": {
+              "type": "bool",
+              "defaultValue": true
+            },
+            "hubVmName": {
+              "type": "string"
+            },
+            "linuxVmName": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "condition": "[parameters('deployVM')]",
+              "type": "Microsoft.Insights/diagnosticSettings",
+              "apiVersion": "2021-05-01-preview",
+              "scope": "[resourceId('Microsoft.Compute/virtualMachines', parameters('hubVmName'))]",
+              "name": "diag-hubvm",
+              "properties": {
+                "workspaceId": "[parameters('workspaceId')]",
+                "logs": [
+                  {
+                    "categoryGroup": "allLogs",
+                    "enabled": true
+                  }
+                ],
+                "metrics": [
+                  {
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ]
+              }
+            },
+            {
+              "condition": "[parameters('deployVM')]",
+              "type": "Microsoft.Insights/diagnosticSettings",
+              "apiVersion": "2021-05-01-preview",
+              "scope": "[resourceId('Microsoft.Compute/virtualMachines', parameters('linuxVmName'))]",
+              "name": "diag-linuxvm",
+              "properties": {
+                "workspaceId": "[parameters('workspaceId')]",
+                "logs": [
+                  {
+                    "categoryGroup": "allLogs",
+                    "enabled": true
+                  }
+                ],
+                "metrics": [
+                  {
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ]
+              }
+            },
+            {
+              "condition": "[parameters('deployVM')]",
+              "type": "Microsoft.Insights/diagnosticSettings",
+              "apiVersion": "2021-05-01-preview",
+              "scope": "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-nic', parameters('hubVmName')))]",
+              "name": "diag-hubvm-nic",
+              "properties": {
+                "workspaceId": "[parameters('workspaceId')]",
+                "logs": [
+                  {
+                    "categoryGroup": "allLogs",
+                    "enabled": true
+                  }
+                ],
+                "metrics": [
+                  {
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ]
+              }
+            },
+            {
+              "condition": "[parameters('deployVM')]",
+              "type": "Microsoft.Insights/diagnosticSettings",
+              "apiVersion": "2021-05-01-preview",
+              "scope": "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-nic', parameters('linuxVmName')))]",
+              "name": "diag-linuxvm-nic",
+              "properties": {
+                "workspaceId": "[parameters('workspaceId')]",
+                "logs": [
+                  {
+                    "categoryGroup": "allLogs",
+                    "enabled": true
+                  }
+                ],
+                "metrics": [
+                  {
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('vmRgName')), 'Microsoft.Resources/deployments', 'hubVM')]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('vmRgName')), 'Microsoft.Resources/deployments', 'LinuxVMModule')]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('monitorRgName')), 'Microsoft.Resources/deployments', 'logsModule')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('vmRgName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployStorage')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "storageDiagModule",
+      "resourceGroup": "[parameters('hubStorageRgName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "workspaceId": {
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('monitorRgName')), 'Microsoft.Resources/deployments', 'logsModule'), '2025-04-01').outputs.resourceId.value]"
+          },
+          "deployStorage": {
+            "value": "[parameters('deployStorage')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "2771978766161186471"
+            }
+          },
+          "parameters": {
+            "workspaceId": {
+              "type": "string"
+            },
+            "deployStorage": {
+              "type": "bool",
+              "defaultValue": true
+            }
+          },
+          "resources": [
+            {
+              "condition": "[parameters('deployStorage')]",
+              "type": "Microsoft.Insights/diagnosticSettings",
+              "apiVersion": "2021-05-01-preview",
+              "scope": "[resourceId('Microsoft.Network/privateEndpoints', 'hubStorageBlobPE')]",
+              "name": "diag-storage-blob-pe",
+              "properties": {
+                "workspaceId": "[parameters('workspaceId')]",
+                "logs": [
+                  {
+                    "categoryGroup": "allLogs",
+                    "enabled": true
+                  }
+                ],
+                "metrics": [
+                  {
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('monitorRgName')), 'Microsoft.Resources/deployments', 'logsModule')]",
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubStorageRgName')), 'Microsoft.Resources/deployments', 'hubStorageModule')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('hubStorageRgName'))]"
       ]
     }
   ]

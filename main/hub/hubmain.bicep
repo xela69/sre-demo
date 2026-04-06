@@ -15,6 +15,8 @@ param deployFirewall bool = true // Toggle to deploy Azure Firewall
 param natPublicIP string //injected securely from main.bicep for NAT testing
 param accessKey string
 param sshPublicKey string //The SSH public key content injected securely from main.bicep or pipeline
+@description('Optional Entra object ID for a human Key Vault administrator. Leave empty to skip this role assignment.')
+param keyVaultAdminObjectId string = ''
 targetScope = 'subscription' // Required for resource group deployments
 
 // Hub VNet parameters
@@ -31,6 +33,14 @@ param hubAddressSpace string = '10.50.0.0/20'
 param firewallPrivateIP string = '10.50.4.4' // Static firewall private IP in AzureFirewallSubnet
 param hubLocation string = 'westus2'
 //param hubSubId string = '155abeb8-c0a9-4927-a455-986a03026829'
+
+var appInsightsName = 'xelaAppsInsight${take(uniqueString(monitorRgName), 4)}'
+var vmInsightsDcrName = 'MSVMI-xelaLogs${take(uniqueString(monitorRgName), 4)}'
+var vmInsightsPerfDcrName = 'MSVMI-Perf-xelaLogs${take(uniqueString(monitorRgName), 4)}'
+var hubVmName = 'hubVM${toLower(take(uniqueString(vmRgName), 4))}'
+var linuxVmName = 'LinuxVM${take(uniqueString(vmRgName), 4)}'
+var vpnGatewayName = 'xelavpng${take(uniqueString(hubRgName), 4)}'
+var firewallPublicIpName = 'xelaAzFirewall-fwIP'
 
 param hubSubnets array = [
   { name: 'vmSubnet', prefix: '10.50.0.0/24' }
@@ -842,43 +852,49 @@ module keyVault 'br/public:avm/res/key-vault/vault:0.9.0' = if (deploySecurity) 
       ]
     }
     // Role assignments: KV identity (4 roles) + WAF GW + App Svc + User admin
-    roleAssignments: [
-      {
-        principalId: mgntIdentity!.outputs.kvPrincipalId
-        roleDefinitionIdOrName: 'Key Vault Secrets User'
-        principalType: 'ServicePrincipal'
-      }
-      {
-        principalId: mgntIdentity!.outputs.kvPrincipalId
-        roleDefinitionIdOrName: 'Key Vault Secrets Officer'
-        principalType: 'ServicePrincipal'
-      }
-      {
-        principalId: mgntIdentity!.outputs.kvPrincipalId
-        roleDefinitionIdOrName: 'Key Vault Administrator'
-        principalType: 'ServicePrincipal'
-      }
-      {
-        principalId: mgntIdentity!.outputs.kvPrincipalId
-        roleDefinitionIdOrName: 'Reader'
-        principalType: 'ServicePrincipal'
-      }
-      {
-        principalId: mgntIdentity!.outputs.wafPrincipalId
-        roleDefinitionIdOrName: 'Key Vault Secrets User'
-        principalType: 'ServicePrincipal'
-      }
-      {
-        principalId: mgntIdentity!.outputs.appsSvcPrincipalId
-        roleDefinitionIdOrName: 'Key Vault Secrets User'
-        principalType: 'ServicePrincipal'
-      }
-      {
-        principalId: 'a1a3e75f-2acf-49f2-abcf-ce9d14560aa7' // arnoldp@xelatech.net
-        roleDefinitionIdOrName: 'Key Vault Administrator'
-        principalType: 'User'
-      }
-    ]
+    roleAssignments: concat(
+      [
+        {
+          principalId: mgntIdentity!.outputs.kvPrincipalId
+          roleDefinitionIdOrName: 'Key Vault Secrets User'
+          principalType: 'ServicePrincipal'
+        }
+        {
+          principalId: mgntIdentity!.outputs.kvPrincipalId
+          roleDefinitionIdOrName: 'Key Vault Secrets Officer'
+          principalType: 'ServicePrincipal'
+        }
+        {
+          principalId: mgntIdentity!.outputs.kvPrincipalId
+          roleDefinitionIdOrName: 'Key Vault Administrator'
+          principalType: 'ServicePrincipal'
+        }
+        {
+          principalId: mgntIdentity!.outputs.kvPrincipalId
+          roleDefinitionIdOrName: 'Reader'
+          principalType: 'ServicePrincipal'
+        }
+        {
+          principalId: mgntIdentity!.outputs.wafPrincipalId
+          roleDefinitionIdOrName: 'Key Vault Secrets User'
+          principalType: 'ServicePrincipal'
+        }
+        {
+          principalId: mgntIdentity!.outputs.appsSvcPrincipalId
+          roleDefinitionIdOrName: 'Key Vault Secrets User'
+          principalType: 'ServicePrincipal'
+        }
+      ],
+      empty(keyVaultAdminObjectId)
+        ? []
+        : [
+            {
+              principalId: keyVaultAdminObjectId
+              roleDefinitionIdOrName: 'Key Vault Administrator'
+              principalType: 'User'
+            }
+          ]
+    )
     // Diagnostics: allLogs + AllMetrics (upgraded from AuditEvent-only)
     diagnosticSettings: [
       {
@@ -916,7 +932,7 @@ module vpngw 'br/public:avm/res/network/virtual-network-gateway:0.9.0' = if (dep
   name: 'vpngwModule'
   scope: resourceGroup(networkRGroup.name)
   params: {
-    name: 'xelavpn${take(uniqueString(hubRgName), 4)}'
+    name: 'xelavpng${take(uniqueString(hubRgName), 4)}'
     location: hubLocation
     gatewayType: 'Vpn'
     skuName: 'VpnGw1AZ' // zone-redundant SKU for westus2
@@ -1025,4 +1041,54 @@ module vnpConnection 'br/public:avm/res/network/connection:0.1.6' = if (deployVp
     }
     tags: { SecurityControl: 'Ignore' }
   }
+}
+
+// Additional diagnostics to close monitoring gaps on deployed resources.
+module monitorDiag '../../modules/hub/monitor-diag.bicep' = if (deploylogsAnalytics) {
+  name: 'monitorDiagModule'
+  scope: resourceGroup(logsRGroup.name)
+  params: {
+    workspaceId: logsAnalytics!.outputs.resourceId
+    appInsightsName: appInsightsName
+    vmInsightsDcrName: vmInsightsDcrName
+    vmInsightsPerfDcrName: vmInsightsPerfDcrName
+    enableVmInsightsPerfDcr: enableVmInsightsPerfDcr
+  }
+  dependsOn: [appInsights, vmDataCollectionRule]
+}
+
+module networkDiag '../../modules/hub/network-diag.bicep' = if (dnsresolver || deployFirewall || deployVpnGw) {
+  name: 'networkDiagModule'
+  scope: resourceGroup(networkRGroup.name)
+  params: {
+    workspaceId: logsAnalytics!.outputs.resourceId
+    dnsresolver: dnsresolver
+    deployFirewall: deployFirewall
+    deployVpnGw: deployVpnGw
+    firewallPublicIpName: firewallPublicIpName
+    vpnGatewayName: vpnGatewayName
+  }
+  dependsOn: [dnsResolver, dnsForwardingRuleset, firewall, vpngw]
+}
+
+module vmDiag '../../modules/hub/vm-diag.bicep' = if (deployVM) {
+  name: 'vmDiagModule'
+  scope: resourceGroup(vmRGroup.name)
+  params: {
+    workspaceId: logsAnalytics!.outputs.resourceId
+    deployVM: deployVM
+    hubVmName: hubVmName
+    linuxVmName: linuxVmName
+  }
+  dependsOn: [hubVM, linuxVM]
+}
+
+module storageDiag '../../modules/hub/storage-diag.bicep' = if (deployStorage) {
+  name: 'storageDiagModule'
+  scope: resourceGroup(storageRGroup.name)
+  params: {
+    workspaceId: logsAnalytics!.outputs.resourceId
+    deployStorage: deployStorage
+  }
+  dependsOn: [storage]
 }

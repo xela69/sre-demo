@@ -1,12 +1,14 @@
 #!/opt/homebrew/bin/bash
 # deploystatus.sh — Monitor Azure deployments across resource groups
-# Usage: ./deploystatus.sh [--poll] [subs=sub1,sub2]
+# Usage: ./deploystatus.sh [--poll] [--all-subs] [subs=sub1,sub2]
 #   --poll   Keep polling until all Running/Accepted deployments finish
-#   subs=    Comma-separated subscription IDs (default: current subscription)
+#   --all-subs Scan all enabled subscriptions
+#   subs=    Comma-separated subscription IDs (overrides --all-subs/current subscription)
 
 set -euo pipefail
 
 POLL=false
+ALL_SUBS=false
 POLL_INTERVAL=15
 
 # ── Parse arguments ──
@@ -14,14 +16,22 @@ subsParam=""
 for arg in "$@"; do
   case "$arg" in
     --poll) POLL=true ;;
+    --all-subs) ALL_SUBS=true ;;
     subs=*) subsParam="${arg#subs=}" ;;
   esac
 done
 
 if [[ -n "$subsParam" ]]; then
   IFS=',' read -r -a subscriptions <<< "$subsParam"
+elif $ALL_SUBS; then
+  mapfile -t subscriptions < <(az account list --query "[?state=='Enabled'].id" -o tsv 2>/dev/null || true)
 else
-  mapfile -t subscriptions < <(az account list --query "[?state=='Enabled'].id" -o tsv 2>/dev/null)
+  current_sub=$(az account show --query id -o tsv 2>/dev/null || true)
+  if [[ -n "$current_sub" ]]; then
+    subscriptions=("$current_sub")
+  else
+    subscriptions=()
+  fi
 fi
 
 if [[ ${#subscriptions[@]} -eq 0 ]]; then
@@ -78,6 +88,8 @@ except Exception:
 check_deployments() {
   local has_running=false
 
+  echo -e "${CYAN}🔎 Scanning ${#subscriptions[@]} subscription(s) for deployment status...${NC}"
+
   # Accumulators for final summary
   succeeded_list=""
   failed_list=""
@@ -86,6 +98,7 @@ check_deployments() {
 
   for sub in "${subscriptions[@]}"; do
     subName=$(az account show --subscription "$sub" --query name -o tsv 2>/dev/null || echo "$sub")
+    echo -e "${CYAN}   • Checking subscription: ${subName} (${sub})${NC}"
     sub_has_active=false
     sub_output=""
 
@@ -223,7 +236,8 @@ if $POLL; then
   echo -e "${CYAN}📡 Polling mode — refreshing every ${POLL_INTERVAL}s until all deployments complete.${NC}"
   echo -e "${CYAN}   Press Ctrl+C to stop.${NC}"
   while true; do
-    clear
+    echo ""
+    echo -e "${BOLD}──────────────── $(date '+%Y-%m-%d %H:%M:%S') ────────────────${NC}"
     if ! check_deployments; then
       echo -e "\n${GREEN}${BOLD}🎉 All deployments finished.${NC}"
       break
