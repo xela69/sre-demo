@@ -24,7 +24,7 @@ az rest --method GET --url "https://graph.microsoft.com/v1.0/users/$USER_ID/memb
 echo "=== Azure RBAC Roles (Subscription + inherited) ==="
 az role assignment list --assignee-object-id "$USER_ID" --include-inherited --all --query "[].{role:roleDefinitionName, scope:scope}" -o table
 
-# Xelatech Subscriptions
+# MCAPS Subscriptions
 hubSubId="ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9"
 appsSubId="42021d44-97d2-47a1-8245-a77149dda4c3"
 dataSubId="8de6c6e8-53af-4ded-a480-fd20c6093e78"

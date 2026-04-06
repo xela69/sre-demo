@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ── Resource groups to NEVER delete ──
 SKIP_RGS=(
-  "cloud-shell-storage-westus"
+  "to-be-determined"
   # Add any other platform / shared RGs here
 )
 
