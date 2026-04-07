@@ -50,6 +50,8 @@ resource dataRg 'Microsoft.Resources/resourceGroups@2024-11-01' = if (deploySpok
     CostCenter: 'Infrastructure'
     Environment: 'Production'
     Owner: 'Xelatech'
+    SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
 }
 module spokeVnet '../../modules/spokes/spokevnets.bicep' = if (deploySpokeVnet) {
@@ -77,6 +79,8 @@ resource vmRGroup 'microsoft.resources/resourceGroups@2024-03-01' = if (deployWi
     CostCenter: 'Infrastructure'
     Environment: 'Lab'
     Owner: 'Xelatech'
+    SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
 }
 
@@ -133,6 +137,7 @@ module onpremWinVM 'br/public:avm/res/compute/virtual-machine:0.9.0' = if (deplo
       CostCenter: 'Infrastructure'
       Environment: 'Lab'
       SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
   }
   dependsOn: [spokeVnet]
@@ -197,6 +202,7 @@ module onpremSqlVM 'br/public:avm/res/compute/virtual-machine:0.9.0' = if (deplo
       CostCenter: 'Infrastructure'
       Environment: 'Lab'
       SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
   }
   dependsOn: [spokeVnet]
@@ -210,6 +216,8 @@ resource storageRGroup 'microsoft.resources/resourceGroups@2024-03-01' = if (dep
     CostCenter: 'Infrastructure'
     Environment: 'Production'
     Owner: 'Xelatech'
+    SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
 }
 // Reference existing managed identity for storage role assignments (hub subscription)
@@ -268,6 +276,8 @@ module storage 'br/public:avm/res/storage/storage-account:0.15.0' = if (deploySt
     tags: {
       Environment: 'Production'
       CostCenter: 'Storage'
+      SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
   }
 }

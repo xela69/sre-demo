@@ -15,6 +15,7 @@ resource publicIp 'Microsoft.Network/publicIPAddresses@2024-07-01' = {
     Environment: 'Production'
     Owner: 'CPS-Security'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
   sku: {
     name: 'Standard'
@@ -45,6 +46,7 @@ resource bastion 'Microsoft.Network/bastionHosts@2024-07-01' = {
     Owner: 'cps-security'
     CreatedBy: 'ArnoldP'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
   sku: {
     name: 'Standard' // Standard SKU for Bastion or Basic SKU

@@ -40,6 +40,7 @@ resource hubStorage 'Microsoft.Storage/storageAccounts@2025-01-01' = {
     Environment: 'Production'
     CostCenter: 'Storage'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
   sku: { name: storageSkuName }
   properties: {

@@ -25,7 +25,7 @@ resource vpngwSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-07-01' exis
 resource vpngwPublicIP 'Microsoft.Network/publicIPAddresses@2024-07-01' = {
   name: toLower('${vpngwName}pip${substring(uniqueString(resourceGroup().id), 0, 4)}')
   location: location
-  tags: { SecurityControl: 'Ignore' }
+  tags: { SecurityControl: 'Ignore', CostControl: 'Ignore' }
   sku: {
     name: 'Standard'
     tier: 'Regional'
@@ -40,7 +40,7 @@ resource vpngwPublicIP 'Microsoft.Network/publicIPAddresses@2024-07-01' = {
 resource vpnGateway 'Microsoft.Network/virtualNetworkGateways@2024-07-01' = {
   name: '${vpngwName}${take(uniqueString(resourceGroup().id), 4)}'
   location: location
-  tags: { SecurityControl: 'Ignore' }
+  tags: { SecurityControl: 'Ignore', CostControl: 'Ignore' }
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
@@ -75,7 +75,7 @@ resource vpnGateway 'Microsoft.Network/virtualNetworkGateways@2024-07-01' = {
 resource localGw 'Microsoft.Network/localNetworkGateways@2024-07-01' = {
   name: toLower('${localGwName}')
   location: location
-  tags: { SecurityControl: 'Ignore' }
+  tags: { SecurityControl: 'Ignore', CostControl: 'Ignore' }
   dependsOn: [
     vpnGateway
   ]

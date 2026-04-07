@@ -61,6 +61,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2024-12-01-preview' = {
     Environment: 'Production'
     Owner: 'Xelatech'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
 }
 // Assign roles to the Key Vault Managed Identity
@@ -144,6 +145,7 @@ resource keyVaultPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-05-01'
     Environment: 'Production'
     Owner: 'Xelatech'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
   properties: {
     subnet: {

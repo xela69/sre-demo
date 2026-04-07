@@ -60,6 +60,7 @@ resource networkRGroup 'Microsoft.Resources/resourceGroups@2024-11-01' = if (dep
     CostCenter: 'Infrastructure'
     Environment: 'Production'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
 }
 module hubVnet '../../modules/hub/hubvnet.bicep' = if (deployHubVnet) {
@@ -88,6 +89,7 @@ resource securityRGroup 'Microsoft.Resources/resourceGroups@2024-03-01' = if (de
     CostCenter: 'Infrastructure'
     Environment: 'Production'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
 }
 module mgntIdentity '../../platform/identity/mgnt-Identity.bicep' = if (deploySecurity) {
@@ -114,6 +116,7 @@ resource acrRGroup 'Microsoft.Resources/resourceGroups@2024-03-01' = if (deployA
     Environment: 'Production'
     Owner: 'ArnoldP'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
 }
 
@@ -129,6 +132,7 @@ module acrService 'br/public:avm/res/container-registry/registry:0.9.3' = if (de
       Environment: 'Production'
       Component: 'ACR'
       SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
     publicNetworkAccess: 'Enabled'
     acrAdminUserEnabled: false // best practice: use RBAC instead
@@ -181,6 +185,7 @@ resource logsRGroup 'Microsoft.Resources/resourceGroups@2024-03-01' = if (deploy
     CostCenter: 'Infrastructure'
     Environment: 'Production'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
 }
 
@@ -201,6 +206,7 @@ module logsAnalytics 'br/public:avm/res/operational-insights/workspace:0.9.1' = 
       CostCenter: 'Infrastructure'
       Environment: 'Production'
       SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
 
     // Security hardening (v0.9.1 uses top-level flag)
@@ -249,6 +255,7 @@ module appInsights 'br/public:avm/res/insights/component:0.7.1' = if (deploylogs
       CostCenter: 'Infrastructure'
       Environment: 'Production'
       SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
   }
 }
@@ -304,6 +311,7 @@ module vmDataCollectionRule 'br/public:avm/res/insights/data-collection-rule:0.1
       CostCenter: 'Infrastructure'
       Environment: 'Production'
       SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
   }
 }
@@ -354,6 +362,7 @@ module vmPerfDataCollectionRule 'br/public:avm/res/insights/data-collection-rule
       CostCenter: 'Infrastructure'
       Environment: 'Production'
       SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
   }
 }
@@ -377,6 +386,7 @@ resource storageRGroup 'microsoft.resources/resourceGroups@2024-03-01' = if (dep
     CostCenter: 'Infrastructure'
     Environment: 'Production'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
 }
 
@@ -393,6 +403,7 @@ module storage 'br/public:avm/res/storage/storage-account:0.14.3' = if (deploySt
       Environment: 'Production'
       CostCenter: 'Storage'
       SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
     accessTier: 'Hot'
     allowBlobPublicAccess: false
@@ -529,6 +540,7 @@ resource vmRGroup 'microsoft.resources/resourceGroups@2024-03-01' = if (deployVM
     CostCenter: 'Infrastructure'
     Environment: 'Production'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
 }
 
@@ -606,6 +618,7 @@ module hubVM 'br/public:avm/res/compute/virtual-machine:0.9.0' = if (deployVM) {
       Environment: 'Production'
       Owner: 'Xelatech'
       SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
   }
 }
@@ -688,6 +701,7 @@ module linuxVM 'br/public:avm/res/compute/virtual-machine:0.9.0' = if (deployVM)
       Service: 'VM'
       CostCenter: 'Linux'
       SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
   }
 }
@@ -707,6 +721,7 @@ module bastionHost 'br/public:avm/res/network/bastion-host:0.8.2' = if (deployBa
       Environment: 'Production'
       Owner: 'cps-security'
       SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
 
     // ── Diagnostic Settings (allLogs + AllMetrics) ──
@@ -765,6 +780,7 @@ module dnsResolver 'br/public:avm/res/network/dns-resolver:0.5.6' = if (dnsresol
       Environment: 'Production'
       Owner: 'Xelatech'
       SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
   }
 }
@@ -800,6 +816,7 @@ module dnsForwardingRuleset 'br/public:avm/res/network/dns-forwarding-ruleset:0.
       Environment: 'Production'
       Owner: 'Xelatech'
       SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
   }
 }
@@ -916,6 +933,7 @@ module keyVault 'br/public:avm/res/key-vault/vault:0.9.0' = if (deploySecurity) 
       Environment: 'Production'
       Owner: 'Xelatech'
       SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
   }
 }
@@ -979,7 +997,7 @@ module vpngw 'br/public:avm/res/network/virtual-network-gateway:0.9.0' = if (dep
         ]
       }
     ]
-    tags: { SecurityControl: 'Ignore' }
+    tags: { SecurityControl: 'Ignore', CostControl: 'Ignore' }
   }
 }
 
@@ -999,7 +1017,7 @@ module localGw 'br/public:avm/res/network/local-network-gateway:0.4.0' = if (dep
         '10.2.1.0/24'
       ]
     }
-    tags: { SecurityControl: 'Ignore' }
+    tags: { SecurityControl: 'Ignore', CostControl: 'Ignore' }
   }
 }
 
@@ -1031,7 +1049,7 @@ module vnpConnection 'br/public:avm/res/network/connection:0.1.6' = if (deployVp
       dhGroup: 'DHGroup14'
       pfsGroup: 'None'
     }
-    tags: { SecurityControl: 'Ignore' }
+    tags: { SecurityControl: 'Ignore', CostControl: 'Ignore' }
   }
 }
 

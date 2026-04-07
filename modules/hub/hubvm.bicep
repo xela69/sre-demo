@@ -28,6 +28,7 @@ resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
     Environment: 'Production'
     Owner: 'Xelatech'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
   properties: {
     ipConfigurations: [
@@ -54,6 +55,7 @@ resource vm 'Microsoft.Compute/virtualMachines@2024-11-01' = {
     Environment: 'Production'
     Owner: 'Xelatech'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
   identity: { type: 'SystemAssigned' }
   properties: {

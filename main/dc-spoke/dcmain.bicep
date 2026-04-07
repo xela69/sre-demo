@@ -81,6 +81,8 @@ module spokeVM 'br/public:avm/res/compute/virtual-machine:0.9.0' = {
       CostCenter: 'Infrastructure'
       Environment: 'Production'
       Owner: 'Xelatech'
+      SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
   }
   dependsOn: [spokeVnet]

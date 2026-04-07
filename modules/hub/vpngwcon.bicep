@@ -39,7 +39,7 @@ resource vpnGateway 'Microsoft.Network/virtualNetworkGateways@2024-07-01' existi
 resource vpnConnection 'Microsoft.Network/connections@2024-07-01' = {
   name: vnpconnectionName
   location: location
-  tags: { SecurityControl: 'Ignore' }
+  tags: { SecurityControl: 'Ignore', CostControl: 'Ignore' }
   properties: {
     virtualNetworkGateway1: {
       id: vpnGateway.id

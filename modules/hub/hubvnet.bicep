@@ -19,6 +19,7 @@ resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
     CostCenter: 'Infrastructure'
     Environment: 'Production'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
   properties: {
     disableBgpRoutePropagation: false
@@ -67,7 +68,7 @@ resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
   }
 }
 
-// Firewall subnet route table — prevents asymmetric routing for return traffic to on-prem
+// Firewall subnet route table — Azure requires 0.0.0.0/0 → Internet on AzureFirewallSubnet
 resource firewallSubnetRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
   name: '${routeTableName}-fw'
   location: location
@@ -76,10 +77,19 @@ resource firewallSubnetRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
     CostCenter: 'Infrastructure'
     Environment: 'Production'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
   properties: {
     disableBgpRoutePropagation: false
-    routes: []
+    routes: [
+      {
+        name: 'fw-subnet-to-internet'
+        properties: {
+          addressPrefix: '0.0.0.0/0'
+          nextHopType: 'Internet'
+        }
+      }
+    ]
   }
 }
 
@@ -91,6 +101,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = {
     CostCenter: 'Infrastructure'
     Environment: 'Production'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
   properties: {
     addressSpace: {

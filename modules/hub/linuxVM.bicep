@@ -26,6 +26,7 @@ resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
   tags: {
     Service: 'Network'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
   properties: {
     ipConfigurations: [
@@ -49,6 +50,7 @@ resource linuxVm 'Microsoft.Compute/virtualMachines@2024-11-01' = {
     Service: 'VM'
     CostCenter: 'Linux'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
   identity: {
     type: 'SystemAssigned' // Use system-assigned managed identity
@@ -118,6 +120,7 @@ resource dcr 'Microsoft.Insights/dataCollectionRules@2023-03-11' = {
     Environment: 'Production'
     Owner: 'Xelatech'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
   kind: 'Linux'
   properties: {
@@ -184,6 +187,7 @@ resource vmDashboards 'Microsoft.Portal/dashboards@2020-09-01-preview' = {
     Environment: 'Production'
     Owner: 'Xelatech'
     SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
   }
   properties: {
     lenses: [

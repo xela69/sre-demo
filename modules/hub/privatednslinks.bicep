@@ -84,6 +84,7 @@ resource privateDnsZones 'Microsoft.Network/privateDnsZones@2024-06-01' = [
       Environment: 'Production'
       Owner: 'ArnoldP'
       SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
   }
 ]
@@ -99,6 +100,7 @@ resource hubDnsLinks 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024
       Environment: 'Production'
       Owner: 'ArnoldP'
       SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
     properties: {
       virtualNetwork: {
@@ -127,6 +129,7 @@ resource spokeDnsLinks 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@20
       Environment: 'Production'
       Owner: 'ArnoldP'
       SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
     properties: {
       virtualNetwork: {
