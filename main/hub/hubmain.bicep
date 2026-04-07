@@ -23,7 +23,6 @@ targetScope = 'subscription' // Required for resource group deployments
 param hubRgName string = 'hubRG'
 param hubVnetName string = 'hubRG-VNet'
 param routeTableName string = 'hubRouteTable'
-param vpnGwRouteTableName string = 'vpnGatewayTable'
 param vmRgName string = 'hubRG-VM'
 param hubAcrRgName string = 'hubRG-Acr'
 param securityRgName string = 'hubRG-Security'
@@ -73,7 +72,6 @@ module hubVnet '../../modules/hub/hubvnet.bicep' = if (deployHubVnet) {
     subnetNames: [for s in hubSubnets: s.name]
     subnetPrefixes: [for s in hubSubnets: s.prefix]
     routeTableName: routeTableName
-    vpnGwRouteTableName: vpnGwRouteTableName
     fwPrivateIP: firewallPrivateIP
     enableFirewallRouting: deployFirewall
     logAnalyticsWorkspaceId: deploylogsAnalytics ? logsAnalytics!.outputs.resourceId : ''
@@ -173,7 +171,6 @@ module acrService 'br/public:avm/res/container-registry/registry:0.9.3' = if (de
       }
     ]
   }
-  dependsOn: [mgntIdentity] // ensure identity exists in Entra before role assignment
 }
 // AppInsight and LogsAnalytics
 resource logsRGroup 'Microsoft.Resources/resourceGroups@2024-03-01' = if (deploylogsAnalytics) {
@@ -265,7 +262,6 @@ module failureAnomalies '../../modules/hub/failure-anomalies.bicep' = if (deploy
     appInsightsId: appInsights!.outputs.resourceId
     appInsightsName: appInsights!.outputs.name
   }
-  dependsOn: [appInsights]
 }
 
 // ── AVM: Data Collection Rule for VM Insights (Map stream only) ──
@@ -523,7 +519,6 @@ module storage 'br/public:avm/res/storage/storage-account:0.14.3' = if (deploySt
       ]
     }
   }
-  dependsOn: [mgntIdentity] // ensure identity exists in Entra before role assignment
 }
 // Hub VM example
 resource vmRGroup 'microsoft.resources/resourceGroups@2024-03-01' = if (deployVM) {
@@ -923,7 +918,6 @@ module keyVault 'br/public:avm/res/key-vault/vault:0.9.0' = if (deploySecurity) 
       SecurityControl: 'Ignore'
     }
   }
-  dependsOn: [mgntIdentity] // ensure identity exists in Entra before role assignment
 }
 
 // ── AVM REPLACEMENT: Virtual Network Gateway (VPN) ──
@@ -987,7 +981,6 @@ module vpngw 'br/public:avm/res/network/virtual-network-gateway:0.9.0' = if (dep
     ]
     tags: { SecurityControl: 'Ignore' }
   }
-  dependsOn: [mgntIdentity] // ensure identity exists in Entra before role assignment
 }
 
 // ── AVM REPLACEMENT: Local Network Gateway ──

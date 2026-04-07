@@ -4,7 +4,6 @@ param addressSpace string
 param subnetPrefixes array
 param subnetNames array
 param routeTableName string
-param vpnGwRouteTableName string
 param fwPrivateIP string
 param enableFirewallRouting bool = true
 param logAnalyticsWorkspaceId string = ''
@@ -21,50 +20,67 @@ resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
     Environment: 'Production'
     SecurityControl: 'Ignore'
   }
-properties: {
-  disableBgpRoutePropagation: false
-  routes: enableFirewallRouting
-    ? [
-        // ── On-prem prefixes: bypass firewall to avoid asymmetric routing on return traffic ────
-        {
-          name: '${routeTableName}-to-onprem-fortiwifi'
-          properties: {
-            addressPrefix: '10.2.1.0/24' // FortiWifi Network
-            nextHopType: 'VnetLocal' // Via VPN GW / BGP, not firewall
+  properties: {
+    disableBgpRoutePropagation: false
+    routes: enableFirewallRouting
+      ? [
+          // ── On-prem prefixes: bypass firewall to avoid asymmetric routing on return traffic ────
+          {
+            name: '${routeTableName}-to-onprem-fortiwifi'
+            properties: {
+              addressPrefix: '10.2.1.0/24' // FortiWifi Network
+              nextHopType: 'VnetLocal' // Via VPN GW / BGP, not firewall
+            }
           }
-        }
-        {
-          name: '${routeTableName}-to-onprem-hq'
-          properties: {
-            addressPrefix: '10.6.1.0/24' // HQ IPs
-            nextHopType: 'VnetLocal'
+          {
+            name: '${routeTableName}-to-onprem-hq'
+            properties: {
+              addressPrefix: '10.6.1.0/24' // HQ IPs
+              nextHopType: 'VnetLocal'
+            }
           }
-        }
-        {
-          name: '${routeTableName}-to-onprem-dc1'
-          properties: {
-            addressPrefix: '172.16.110.0/24' // DC-1
-            nextHopType: 'VnetLocal'
+          {
+            name: '${routeTableName}-to-onprem-dc1'
+            properties: {
+              addressPrefix: '172.16.110.0/24' // DC-1
+              nextHopType: 'VnetLocal'
+            }
           }
-        }
-        {
-          name: '${routeTableName}-to-onprem-dc2'
-          properties: {
-            addressPrefix: '172.17.111.0/24' // DC-2
-            nextHopType: 'VnetLocal'
+          {
+            name: '${routeTableName}-to-onprem-dc2'
+            properties: {
+              addressPrefix: '172.17.111.0/24' // DC-2
+              nextHopType: 'VnetLocal'
+            }
           }
-        }
-        // ── Default route: all other traffic through firewall for inspection ────
-        {
-          name: '${routeTableName}-to-hubAzFirewall'
-          properties: {
-            addressPrefix: '0.0.0.0/0'
-            nextHopType: 'VirtualAppliance'
-            nextHopIpAddress: fwPrivateIP
+          // ── Default route: all other traffic through firewall for inspection ────
+          {
+            name: '${routeTableName}-to-hubAzFirewall'
+            properties: {
+              addressPrefix: '0.0.0.0/0'
+              nextHopType: 'VirtualAppliance'
+              nextHopIpAddress: fwPrivateIP
+            }
           }
-        }
-      ]
-    : []
+        ]
+      : []
+  }
+}
+
+// Firewall subnet route table — prevents asymmetric routing for return traffic to on-prem
+resource firewallSubnetRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
+  name: '${routeTableName}-fw'
+  location: location
+  tags: {
+    Service: 'Network'
+    CostCenter: 'Infrastructure'
+    Environment: 'Production'
+    SecurityControl: 'Ignore'
+  }
+  properties: {
+    disableBgpRoutePropagation: false
+    routes: []
+  }
 }
 
 resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = {
