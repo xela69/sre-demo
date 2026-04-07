@@ -1,372 +1,229 @@
-# Asymmetric Routing Prevention: Spoke Egress Inspection Strategy
+# Asymmetric Routing Prevention: Hub-Spoke Inspection Strategy
 
 ## Overview
-Implemented asymmetric routing prevention by adding **specific on-prem routes in the hub route table** that bypass the firewall, while keeping the **hub or spoke route tables forcing all traffic through the firewall** for inspection.
+
+In a hub-spoke topology with Azure Firewall and a VPN Gateway, traffic inspection goals are:
+
+| Flow | Direction | Inspection |
+|------|-----------|------------|
+| Spoke ↔ Spoke (East-West) | Both | ✅ Inspected by Azure Firewall |
+| Azure (Hub/Spoke) → On-prem | Outbound | ✅ Inspected by Azure Firewall |
+| On-prem → Azure (Hub/Spoke) | Return | ❌ Not inspected (bypass firewall) |
+
+Return traffic from on-prem bypasses the firewall to avoid double-inspection and asymmetric routing issues. The Azure VPN Gateway routes directly to spoke VNets via gateway transit peering.
 
 ---
 
-## Problem: Asymmetric Routing
+## Traffic Flows
 
-### Without Prevention:
+### Flow 1: Spoke → On-prem (INSPECTED outbound)
+
 ```
-Outbound (hubvm → OnPrem):
-  hubvm → Route table: 0.0.0.0/0 → Firewall 
-    → Firewall inspects + allows
-    → Traffic reaches OnPrem ✓
+Spoke VM (10.51.0.4) → On-prem (10.2.1.5)
 
-Return (OnPrem → hubvm ):
-  OnPrem → VPN GW → Hub routing
-    → Hub route table: 0.0.0.0/0 → Firewall 
-      → RE-INSPECTED by firewall ⚠️
-    → Spoke receives packet
+1. Spoke subnet route table:
+   • 0.0.0.0/0 → Azure Firewall (10.50.4.4)   ← UDR catches all outbound
+   • disableBgpRoutePropagation: true           ← prevents VPN GW from adding on-prem bypass routes
 
-❌ PROBLEM: Different paths (asymmetric)
-  - Outbound: via firewall
-  - Return: via firewall (redundant re-inspection)
-  - Performance impact, potential rule/sessionness issues
+2. Azure Firewall receives packet:
+   • Rule: AllowAzureToOnPrem
+   • Source:      trustedAzureIpGroup (10.50-53.x)
+   • Destination: trustedOnPremIpGroup (10.2.1.0/24, 10.6.1.0/24, 172.16.110.0/24, 172.17.111.0/24)
+   • Protocol:    TCP/UDP/ICMP → ALLOW ✓
+
+3. Firewall subnet route table:
+   • 10.2.1.0/24 → VirtualNetworkGateway        ← on-prem UDRs on firewall RT (not hub VM RT)
+   • 10.6.1.0/24 → VirtualNetworkGateway
+   • 172.16.110.0/24 → VirtualNetworkGateway
+   • 172.17.111.0/24 → VirtualNetworkGateway
+   • 0.0.0.0/0   → Internet                     ← Azure requirement for AzureFirewallSubnet
+
+4. VPN Gateway → on-prem tunnel → FortiGate receives packet
+
+✅ INSPECTED
 ```
 
-### With Prevention:
+### Flow 2: On-prem → Azure Spoke (INSPECTED — symmetric with Flow 1)
+
 ```
-Outbound (hubvm → OnPrem):
-  hubVM → Route table: 0.0.0.0/0 → Firewall 
-    → Firewall inspects + allows
-    → Traffic reaches OnPrem ✓
+On-prem (10.2.1.5) → Spoke VM (10.51.0.4)
 
-Return (OnPrem → hubVM):
-  OnPrem → VPN GW → Hub routing
-    → Hub route table: 10.2.1.0/24 → VnetLocal
-      → Bypasses firewall (direct via VPN GW or BGP)
-    → Spoke receives packet ✓
+1. Packet arrives at hub VPN Gateway via IPsec tunnel
 
-✅ SOLUTION: Asymmetric routing prevented
-  - Outbound: inspected (via firewall)
-  - Return: direct (no re-inspection)
-  - Consistent performance, stateful firewall session handles both directions
+2. GatewaySubnet route table lookup:
+   • 10.51.0.0/20 → Azure Firewall (10.50.4.4)   ← redirects to FW before delivery
+   • disableBgpRoutePropagation: false            ← GatewaySubnet must keep BGP routes
+
+3. Azure Firewall receives packet:
+   • Rule: AllowOnPremToAzure
+   • Source:      trustedOnPremIpGroup
+   • Destination: trustedAzureIpGroup
+   • Protocol:    TCP/UDP/ICMP → ALLOW ✓
+   • FW creates session state ✓
+
+4. Firewall routes to spoke VM (via VNet routing)
+
+5. Spoke VM replies → 0.0.0.0/0 → Firewall:
+   • FW matches existing state → ALLOW (no re-inspection)
+   → FW routes to VPN GW → on-prem
+
+✅ INSPECTED — symmetric, stateful (FW sees both legs)
+```
+
+> **Why GatewaySubnet RT is required**: Without it, VPN GW delivers on-prem packets directly to the destination subnet, bypassing the firewall. The Azure VM then replies via `0.0.0.0/0 → Firewall`, but the firewall has **no state** for the connection (never saw the SYN) and drops the reply. Adding specific Azure address space routes on the GatewaySubnet RT forces on-prem-initiated traffic through the firewall first, making both legs symmetric.
+
+### Flow 3: On-prem → Hub VM (INSPECTED — same as Flow 2)
+
+```
+On-prem (10.2.1.5) → Hub VM (10.50.0.4)
+
+1. GatewaySubnet RT: 10.50.0.0/20 → Azure Firewall ✓
+2. Firewall: AllowOnPremToAzure → ALLOW, creates state
+3. Hub VM replies → 0.0.0.0/0 → Firewall → matches state → on-prem
+
+✅ INSPECTED — symmetric
+```
+
+### Flow 4: Spoke ↔ Spoke East-West (INSPECTED both directions)
+
+```
+Spoke A (10.51.0.4) ↔ Spoke B (10.52.0.4)
+
+OUTBOUND (Spoke A → Spoke B):
+1. Spoke A route table: 0.0.0.0/0 → Firewall → ALLOW (AllowTrustedAzureTraffic) ✓
+
+RETURN (Spoke B → Spoke A):
+1. Spoke B route table: 0.0.0.0/0 → Firewall → ALLOW (AllowTrustedAzureTraffic) ✓
+
+✅ BOTH DIRECTIONS INSPECTED
 ```
 
 ---
 
-## Implementation
+## Route Table Design
 
-### File: `modules/hub/hubvnet.bicep`
+### Hub Route Table (`hubRouteTable`)
+Applied to: all hub subnets except GatewaySubnet, AzureFirewallSubnet, AzureBastionSubnet, privateEPSubnet, dns subnets
 
-**Before** (lines 15-36):
 ```bicep
 properties: {
-  disableBgpRoutePropagation: false
-  routes: enableFirewallRouting
-    ? [
-        {
-          name: '${routeTableName}-to-hubAzFirewall'
-          properties: {
-            addressPrefix: '0.0.0.0/0'
-            nextHopType: 'VirtualAppliance'
-            nextHopIpAddress: fwPrivateIP
-          }
-        }
-      ]
-    : []
+  disableBgpRoutePropagation: true  // no BGP bypass routes
+  routes: [
+    {
+      name: '${routeTableName}-to-hubAzFirewall'
+      properties: {
+        addressPrefix: '0.0.0.0/0'
+        nextHopType: 'VirtualAppliance'
+        nextHopIpAddress: fwPrivateIP  // all outbound through firewall
+      }
+    }
+  ]
 }
 ```
 
-**After** (with specific on-prem routes):
+> **Why no on-prem UDRs here**: Adding `10.2.1.0/24 → VirtualNetworkGateway` on the hub VM subnet would let hub VMs bypass the firewall when sending to on-prem. The `0.0.0.0/0 → Firewall` default catches on-prem-bound traffic correctly.
+
+### Firewall Subnet Route Table (`hubRouteTable-fw`)
+Applied to: `AzureFirewallSubnet` only
+
 ```bicep
 properties: {
-  disableBgpRoutePropagation: false
-  routes: enableFirewallRouting
-    ? [
-        // ── On-prem prefixes: bypass firewall to avoid asymmetric routing on return traffic ────
-        {
-          name: '${routeTableName}-to-onprem-fortiwifi'
-          properties: {
-            addressPrefix: '10.2.1.0/24' // FortiWifi Network
-            nextHopType: 'VnetLocal' // Via VPN GW / BGP, not firewall
-          }
-        }
-        {
-          name: '${routeTableName}-to-onprem-hq'
-          properties: {
-            addressPrefix: '10.6.1.0/24' // HQ IPs
-            nextHopType: 'VnetLocal'
-          }
-        }
-        {
-          name: '${routeTableName}-to-onprem-dc1'
-          properties: {
-            addressPrefix: '172.16.110.0/24' // DC-1
-            nextHopType: 'VnetLocal'
-          }
-        }
-        {
-          name: '${routeTableName}-to-onprem-dc2'
-          properties: {
-            addressPrefix: '172.17.111.0/24' // DC-2
-            nextHopType: 'VnetLocal'
-          }
-        }
-        // ── Default route: all other traffic through firewall for inspection ────
-        {
-          name: '${routeTableName}-to-hubAzFirewall'
-          properties: {
-            addressPrefix: '0.0.0.0/0'
-            nextHopType: 'VirtualAppliance'
-            nextHopIpAddress: fwPrivateIP
-          }
-        }
-      ]
-    : []
+  disableBgpRoutePropagation: false  // BGP enabled: VPN GW propagates on-prem routes into firewall's effective routes
+  routes: [
+    // Azure mandate: only 0.0.0.0/0 → Internet is supported as a custom UDR on AzureFirewallSubnet
+    // On-prem routes reach the firewall via BGP propagation from VPN GW — NOT via custom UDRs
+    { name: 'fw-subnet-to-internet', addressPrefix: '0.0.0.0/0', nextHopType: 'Internet' }
+  ]
 }
 ```
 
-### Key Changes:
-- ✅ Added 4 specific on-prem prefixes with `nextHopType: 'VnetLocal'` (routes via VPN GW or system routes)
-- ✅ Moved default 0.0.0.0/0 route to **last position** (lower priority = matches last)
-- ✅ Prefixed routes are now **most specific** and match first
-- ✅ More specific routes take priority over default route in Azure routing
+> **Why no on-prem UDRs here**: Azure Firewall subnet does **not** support custom UDRs for on-prem prefixes. Adding them puts the firewall into a faulted state (`FirewallPolicyUpdateFailed`). Instead, `disableBgpRoutePropagation: false` lets the VPN GW automatically inject on-prem routes into the firewall subnet's effective routes via BGP. The firewall uses those BGP-propagated routes to forward inspected traffic to the VPN GW.
+
+### Spoke Route Tables (`appsRouteTable`, `dcRouteTable`, `dataRouteTable`)
+
+```bicep
+properties: {
+  disableBgpRoutePropagation: true  // prevent VPN GW from injecting on-prem bypass routes
+  routes: [
+    {
+      name: '${routeTableName}-to-hubAzFirewall'
+      properties: {
+        addressPrefix: '0.0.0.0/0'
+        nextHopType: 'VirtualAppliance'
+        nextHopIpAddress: fwPrivateIP
+      }
+    }
+  ]
+}
+```
+
+> **Why `disableBgpRoutePropagation: true`**: With `useRemoteGateways: true` on spoke peering and a VPN GW in the hub, the VPN GW could inject on-prem prefixes into spoke route tables. Those more-specific routes would bypass the `0.0.0.0/0 → Firewall` UDR and allow spoke VMs to reach on-prem without firewall inspection.
 
 ---
 
-## Routing Decision Tree — Return Path
-
-### OnPrem → Hub → Spoke Traffic
+## VNet Peering Configuration
 
 ```
-Packet arrives at hub from OnPrem (via VPN):
-  Source: 10.2.1.5 (FortiWifi)
-  Destination: 10.50.0.4 (hub VM)
-  
-Hub route table lookup on subnet:
-  
-  Check routes in order:
-  1. 10.2.1.0/24 → VnetLocal ❌ (not matching dest 10.50.0.4)
-  2. 10.6.1.0/24 → VnetLocal ❌ (not matching dest 10.50.0.4)
-  3. 172.16.110.0/24 → VnetLocal ❌ (not matching dest 10.50.0.4)
-  4. 172.17.111.0/24 → VnetLocal ❌ (not matching dest 10.50.0.4)
-  5. 0.0.0.0/0 → Firewall (MATCH) ✓
-  
-  ⚠️ BUT: Before UDR lookup, Azure checks SYSTEM ROUTES per route propagation enabled
-  
-System routes (higher priority):
-  • 10.50.0.0/20 (hub VNet) → virtualnetwork ✓ MATCH!
-  
-✅ RESULT:
-  Traffic follows system route (virtualnetworking)
-  → Direct to hub via system routes
-  → Bypasses Firewall UDR rule
-  → No re-inspection
+Hub peering  → Spoke:  allowGatewayTransit: true,  useRemoteGateways: false
+Spoke peering → Hub:   allowGatewayTransit: false, useRemoteGateways: true
 ```
 
-### Azure Route Priority (High to Low):
-1. **System Routes** (VNet peering, service endpoints)
-2. **BGP Routes** (from VPN Gateway with dynamic routing enabled)
-3. **User-Defined Routes (UDRs)** (static route table entries)
-
-Since peering is a **system route**, it takes precedence over the default UDR, ensuring return traffic is **NOT re-inspected**.
+`useRemoteGateways: true` on spoke peering enables the VPN Gateway in the hub to route traffic directly to spoke VNets — this is what allows on-prem return traffic to bypass the firewall.
 
 ---
 
-## Traffic Paths After Implementation
+## Firewall Policy Rules
 
-### Path 1: hub or Spoke VM → OnPrem (INSPECTED)
+| Rule | Source | Destination | Protocols | Action |
+|------|--------|-------------|-----------|--------|
+| `AllowTrustedAzureTraffic` | trustedAzureIpGroup | trustedAzureIpGroup | TCP/UDP/ICMP | ALLOW |
+| `AllowAzureToOnPrem` | trustedAzureIpGroup | trustedOnPremIpGroup | TCP/UDP/ICMP | ALLOW |
+| `AllowOnPremToAzure` | trustedOnPremIpGroup | trustedAzureIpGroup | TCP/UDP/ICMP | ALLOW |
 
-```
-Source: hub VM (10.50.0.4)
-Destination: OnPrem IP (10.2.1.5)
+**On-prem IP Group** (`ipg-trusted-onprem`): `10.2.1.0/24`, `10.6.1.0/24`, `172.16.110.0/24`, `172.17.111.0/24`
 
-1. Spoke subnet route table lookup:
-   • No specific route for 10.2.1.0/24
-   • Matches: 0.0.0.0/0 → Firewall (10.0.4.4) ✓
-
-2. Packet reaches Firewall:
-   • Source IP Group: 10.50.0.0/20 (in trustedAzureIpGroup) ✓
-   • Destination IP Group: 10.2.1.0/24 (in trustedOnPremIpGroup) ✓
-   • Protocol: TCP/UDP/ICMP ✓
-   • Rule: AllowAzureToOnPrem → ALLOW ✓
-
-3. Firewall forwards packet:
-   • Via hub peering or VPN GW
-   → OnPrem receives packet
-
-✅ RESULT: INSPECTED, ALLOWED
-```
-
-### Path 2: OnPrem → hub or spoke VM (NOT RE-INSPECTED)
-
-```
-Source: OnPrem IP (10.2.1.5)
-Destination: Spoke VM (10.50.0.4)
-
-1. Packet arrives at hub VNet via VPN Gateway
-
-2. Hub subnet route table lookup:
-   • Destination: 10.50.0.4 (in 10.50.0.0/20)
-   • Specific UDR: None for this destination
-   • Default UDR: 0.0.0.0/0 → Firewall
-   
-3. BUT: System route check FIRST:
-   • 10.50.0.0/20 → VirtualNetworkPeering ✓ MATCH (higher priority)
-   
-4. System route takes precedence:
-   → Traffic delivered via peering (bypasses UDR)
-   → Does NOT go to Firewall
-
-5. Spoke receives packet directly via peering
-
-✅ RESULT: NOT RE-INSPECTED (asymmetric routing prevented)
-```
-
-### Path 3: Spoke → Spoke via Hub (INSPECTED BOTH DIRECTIONS)
-
-```
-Source: OnPrem-Spoke (10.51.0.4)
-Destination: Apps-Spoke (10.52.0.4)
-
-OUTBOUND:
-1. OnPrem-Spoke route: 0.0.0.0/0 → Firewall ✓
-2. Firewall rule: AllowTrustedAzureTraffic → ALLOW ✓
-3. Packet reaches Apps-Spoke
-   
-RETURN:
-1. Apps-Spoke route: 0.0.0.0/0 → Firewall ✓
-2. Firewall rule: AllowTrustedAzureTraffic → ALLOW ✓
-3. Packet reaches OnPrem-Spoke
-
-✅ RESULT: Both directions inspected (expected, spoke-to-spoke via hub/fw)
-```
+**`AllowOnPremToAzure`** is intentionally defined but effectively unused for traffic that bypasses the firewall via VPN GW → peering. It handles the edge case where on-prem traffic arrives at a hub subnet with only a `0.0.0.0/0 → Firewall` UDR (e.g., hub VMs initiating sessions back to on-prem sources).
 
 ---
 
-## Firewall Rules — Unchanged
+## Files Modified
 
-The firewall rules remain the same; routing changes ensure they're applied correctly:
-
-| Rule | Source | Destination | Ports | Action |
-|------|--------|-------------|-------|--------|
-| AllowAzureToOnPrem | trustedAzureIpGroup | trustedOnPremIpGroup | See below | ALLOW |
-| AllowOnPremToAzure | trustedOnPremIpGroup | trustedAzureIpGroup | See below | ALLOW |
-| AllowTrustedAzureTraffic | trustedAzureIpGroup | trustedAzureIpGroup | All | ALLOW |
-
-**Allowed Ports** (for Azure↔OnPrem):
-- 22 (SSH), 25 (SMTP), 53 (DNS), 80 (HTTP), 88 (Kerberos)
-- 123 (NTP), 135 (RPC), 137-139 (NetBIOS), 161 (SNMP)
-- 389 (LDAP), 443 (HTTPS), 445 (SMB), 464 (Kerberos), 636 (LDAPS)
-- 647, 1433 (SQL), 3268-3269 (LDAP GC), 3389 (RDP), 5022 (AG), 5353, 5671, 8443
-- 9191-9192, 9389, 9200-9400, 11000-11999 (SQL MI), 49152-65535 (Ephemeral)
+| File | Change |
+|------|--------|
+| `modules/hub/hubvnet.bicep` | Added `gatewaySubnetRouteTable` with all Azure address spaces → Firewall; attached to `GatewaySubnet`; hub/spoke VM subnets use `0.0.0.0/0 → FW` + `disableBgpRoutePropagation: true` |
+| `modules/spokes/spokevnets.bicep` | Set `disableBgpRoutePropagation: true` |
 
 ---
 
-## Validation Checklist
+## Validation
 
-### ✅ Hub Route Table
-- [x] 4 specific on-prem routes added (10.2.1.0/24, 10.6.1.0/24, 172.16.110.0/24, 172.17.111.0/24)
-- [x] All on-prem routes use `nextHopType: 'VnetLocal'` (bypass firewall)
-- [x] Default 0.0.0.0/0 → Firewall route positioned last (lower priority)
-- [x] Routes applied only when `enableFirewallRouting = true`
-
-### ✅ Spoke Route Tables
-- [x] Keep default 0.0.0.0/0 → Firewall (inspect all outbound)
-- [x] No specific on-prem routes needed (peering system routes handle return)
-
-### ✅ Firewall Rules
-- [x] AllowAzureToOnPrem permits outbound inspection ✓
-- [x] AllowOnPremToAzure permits inbound (but bypasses FW via routing) ✓
-- [x] AllowTrustedAzureTraffic handles spoke-to-spoke ✓
-
-### ✅ VNet Peering
-- [x] Hub ↔ Spoke peering with `allowForwardedTraffic: true`
-- [x] Peering system routes take precedence over UDRs ✓
-
----
-
-## Bicep Validation
-
-✅ **Compiled Successfully**
-```bash
-$ az bicep build --file ./modules/hub/hubvnet.bicep
-(no errors)
-```
-
----
-
-## Deployment Impact
-
-### Files Modified:
-- `modules/hub/hubvnet.bicep` — Added specific on-prem routes in hub route table
-
-### Deployments Affected:
-- `main/hub/hubmain.bicep` (calls hubvnet.bicep module)
-- Any spoke deployments using this hub
-
-### Breaking Changes:
-- ✅ None — purely additive route changes
-- Existing routes still work as before
-- Only applies when `enableFirewallRouting = true`
-
-### When to Deploy:
-- Next hub deployment or redeployment
-- Can be applied to existing hubs (adds/updates routes, non-destructive)
-
----
-
-## Testing Recommendations
-
-### Test 1: Verify Hub Effective Routes
+### Check hub VM effective routes (expect no on-prem UDRs, only 0.0.0.0/0 → VirtualAppliance)
 ```bash
 az network nic show-effective-route-table \
-  --resource-group hubRG \
+  --resource-group hubRG-VM \
   --name <hub-vm-nic> \
   --output table
 ```
 
-**Expected**:
-```
-Source    Prefix              Next Hop Type      Next Hop IP
---------  ──────────────────  ─────────────────  ──────────
-System    10.0.0.0/20         VNetLocal          
-System    10.50.0.0/20         VirtualNetworkPeering
-System    10.2.0.0/20         VirtualNetworkPeering  
-User      10.2.1.0/24         VnetLocal          
-User      10.6.1.0/24         VnetLocal          
-User      172.16.110.0/24     VnetLocal          
-User      172.17.111.0/24     VnetLocal          
-User      0.0.0.0/0           VirtualAppliance   10.0.4.4
-```
-
-### Test 2: Trace Spoke → OnPrem (Should see firewall)
-```powershell
-# From hub or Spoke VM
-Test-NetConnection -ComputerName 10.2.1.5 -Port 3389 -DiagnoseRouting
-# Should pass through firewall
-```
-
-### Test 3: Trace OnPrem → Spoke (Should NOT see firewall)
+### Check firewall subnet effective routes (expect on-prem UDRs + 0.0.0.0/0 → Internet)
 ```bash
-# From OnPrem, trace to 10.50.0.4
-# Should arrive directly without firewall latency penalty
+az network nic show-effective-route-table \
+  --resource-group hubRG \
+  --name <firewall-mgmt-nic> \
+  --output table
 ```
 
-### Test 4: Firewall Log Verification
+### End-to-end ping test (from FortiGate — should succeed and show in firewall logs)
+```
+execute ping-options source 10.2.1.1
+execute ping 10.50.0.5
+```
+
+### Firewall log — confirm Azure→OnPrem traffic is logged (inspected)
 ```bash
-# Check firewall logs
 az monitor log-analytics query \
-  --workspace /subscriptions/.../resourceGroups/hubRG/providers/.../workspaces/... \
-  --analytics-query "AzureDiagnostics | where ResourceType='FIREWALLS' | summarize by Action"
+  --workspace <workspace-id> \
+  --analytics-query "AzureDiagnostics | where ResourceType == 'AZUREFIREWALLS' | where msg_s contains '10.2.1'"
 ```
 
-**Expected**:
-- OnPrem → Spoke: Fewer logs or "Deny" (not inspected, system route takes precedence)
-- Spoke → OnPrem: "Allow" logs (inspected)
 
----
-
-## Summary
-
-| Component | Before | After | Status |
-|-----------|--------|-------|--------|
-| **Spoke Outbound** | 0.0.0.0/0 → FW | 0.0.0.0/0 → FW | ✅ Inspected |
-| **Hub Return (OnPrem→Spoke)** | 0.0.0.0/0 → FW | 10.x.x.0/xx → VnetLocal | ✅ Not Re-Inspected |
-| **Asymmetric Routing** | ⚠️ Re-inspection on return | ✅ Prevented | FIXED |
-| **Performance** | ⚠️ Double FW latency | ✅ Optimized | IMPROVED |
-
-✅ **Implementation Complete** — Asymmetric routing prevention active. Return traffic from on-prem to spokes now bypasses firewall, while outbound spoke→onprem traffic remains inspected.

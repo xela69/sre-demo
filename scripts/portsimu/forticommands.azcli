@@ -11,28 +11,30 @@ end
 
 # 2) IPsec P1/P2 (PSK + selectors + NAT-T)
 
-# Phase1 (IKEv2)
+# Phase1 (IKEv2) — must match Azure: AES256-SHA256, DHGroup14, IKEv2, DPD 45s
 config vpn ipsec phase1-interface
   edit "azure-a-p1"
-    set remote-gw 57.154.177.226
+    set remote-gw 20.83.81.69         # Azure VPN GW public IP (updated Apr 2026)
     set ike-version 2
     set net-device enable
     set nattraversal enable
     set dpd on-idle
+    set dpd-retryinterval 45           # matches Azure dpdTimeoutSeconds: 45
     set psksecret BU71Rz8Ra@J*nnOyA9QR
-    set proposal aes256-sha256 aes256-sha1 aes128-sha256 aes128-sha1
-    set dhgrp 14 2
+    set proposal aes256-sha256         # matches Azure ikeEncryption: AES256, ikeIntegrity: SHA256
+    set dhgrp 14                       # matches Azure dhGroup: DHGroup14
   next
 end
 
-# Phase2 (IPsec ESP)
+# Phase2 (IPsec ESP) — FIXED: must match Azure customIPSecPolicy exactly
+# Azure: ipsecEncryption: GCMAES256, ipsecIntegrity: GCMAES256 (combined GCM — no separate HMAC)
+# Azure: pfsGroup: None, saLifeTimeSeconds: 27000
 config vpn ipsec phase2-interface
   edit "azure-a-p2"
     set phase1name "azure-a-p1"
-    set proposal aes256-sha256 aes256-sha1 aes128-sha256 aes128-sha1
-    set pfs enable
-    set dhgrp 14 2
-    set keylifeseconds 3600
+    set proposal aes256gcm             # GCMAES256 combined mode — was aes256-sha256 (WRONG)
+    set pfs disable                    # matches Azure pfsGroup: None  — was pfs enable (WRONG)
+    set keylifeseconds 27000           # matches Azure saLifeTimeSeconds: 27000 — was 3600 (WRONG)
     set src-subnet 0.0.0.0 0.0.0.0
     set dst-subnet 0.0.0.0 0.0.0.0
   next

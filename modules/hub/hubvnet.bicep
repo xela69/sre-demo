@@ -9,6 +9,14 @@ param enableFirewallRouting bool = true
 param logAnalyticsWorkspaceId string = ''
 param enableDiagnostics bool = true
 param Peering bool = false //only enable when you have deployed spokes
+// All Azure-side address spaces (hub + spokes) — used in GatewaySubnet RT to force
+// on-prem→Azure traffic through the firewall for symmetric stateful inspection
+param azureAddressSpaces array = [
+  '10.50.0.0/20' // hub
+  '10.51.0.0/20' // apps-spoke
+  '10.52.0.0/20' // data-spoke
+  '10.53.0.0/20' // dc-spoke
+]
 
 // Route tables per Spoke region 
 resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
@@ -22,39 +30,10 @@ resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
     CostControl: 'Ignore'
   }
   properties: {
-    disableBgpRoutePropagation: false
+    disableBgpRoutePropagation: false // Prevent VPN GW BGP from advertising on-prem routes that would bypass firewall
     routes: enableFirewallRouting
       ? [
-          // ── On-prem prefixes: bypass firewall to avoid asymmetric routing on return traffic ────
-          {
-            name: '${routeTableName}-to-onprem-fortiwifi'
-            properties: {
-              addressPrefix: '10.2.1.0/24' // FortiWifi Network
-              nextHopType: 'VnetLocal' // Via VPN GW / BGP, not firewall
-            }
-          }
-          {
-            name: '${routeTableName}-to-onprem-hq'
-            properties: {
-              addressPrefix: '10.6.1.0/24' // HQ IPs
-              nextHopType: 'VnetLocal'
-            }
-          }
-          {
-            name: '${routeTableName}-to-onprem-dc1'
-            properties: {
-              addressPrefix: '172.16.110.0/24' // DC-1
-              nextHopType: 'VnetLocal'
-            }
-          }
-          {
-            name: '${routeTableName}-to-onprem-dc2'
-            properties: {
-              addressPrefix: '172.17.111.0/24' // DC-2
-              nextHopType: 'VnetLocal'
-            }
-          }
-          // ── Default route: all other traffic through firewall for inspection ────
+          // ── All traffic through firewall for inspection (including Azure → On-prem) ────
           {
             name: '${routeTableName}-to-hubAzFirewall'
             properties: {
@@ -65,6 +44,34 @@ resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
           }
         ]
       : []
+  }
+}
+
+// GatewaySubnet route table — forces on-prem→Azure traffic through Azure Firewall so the
+// firewall has state for BOTH directions (fixes asymmetric routing for on-prem-initiated sessions).
+// Only specific Azure address prefixes are added; 0.0.0.0/0 must NOT be added to GatewaySubnet.
+resource gatewaySubnetRouteTable 'Microsoft.Network/routeTables@2024-07-01' = if (enableFirewallRouting) {
+  name: '${routeTableName}-gw'
+  location: location
+  tags: {
+    Service: 'Network'
+    CostCenter: 'Infrastructure'
+    Environment: 'Production'
+    SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
+  }
+  properties: {
+    disableBgpRoutePropagation: false // must stay false — GatewaySubnet needs BGP routes to function
+    routes: [
+      for (prefix, i) in azureAddressSpaces: {
+        name: 'gw-to-fw-azure-${i}'
+        properties: {
+          addressPrefix: prefix
+          nextHopType: 'VirtualAppliance'
+          nextHopIpAddress: fwPrivateIP
+        }
+      }
+    ]
   }
 }
 
@@ -80,8 +87,10 @@ resource firewallSubnetRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
     CostControl: 'Ignore'
   }
   properties: {
-    disableBgpRoutePropagation: false
+    disableBgpRoutePropagation: false // BGP propagation enabled: VPN GW injects on-prem routes into firewall subnet effective routes
     routes: [
+      // Azure mandate: AzureFirewallSubnet must have 0.0.0.0/0 → Internet
+      // On-prem routes are handled via BGP propagation from VPN GW (not custom UDRs — unsupported on this subnet)
       {
         name: 'fw-subnet-to-internet'
         properties: {
@@ -122,21 +131,25 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = {
             ? {
                 id: firewallSubnetRouteTable.id
               }
-            : !contains(
-                  [
-                    'GatewaySubnet'
-                    'privateEPSubnet'
-                    'AzureBastionSubnet'
-                    'appGatewaySubnet'
-                    'dns-inbound'
-                    'dns-outbound'
-                  ],
-                  subnetNames[i]
-                )
+            : subnetNames[i] == 'GatewaySubnet' && enableFirewallRouting
                 ? {
-                    id: hubRouteTable.id
+                    id: gatewaySubnetRouteTable.id
                   }
-                : null
+                : !contains(
+                      [
+                        'GatewaySubnet'
+                        'privateEPSubnet'
+                        'AzureBastionSubnet'
+                        'appGatewaySubnet'
+                        'dns-inbound'
+                        'dns-outbound'
+                      ],
+                      subnetNames[i]
+                    )
+                    ? {
+                        id: hubRouteTable.id
+                      }
+                    : null
           delegations: contains(['dns-inbound', 'dns-outbound'], subnetNames[i])
             ? [
                 {

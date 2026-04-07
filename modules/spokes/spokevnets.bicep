@@ -12,7 +12,7 @@ resource routeTable 'Microsoft.Network/routeTables@2024-07-01' = {
   name: routeTableName
   location: location
   properties: {
-    disableBgpRoutePropagation: false
+    disableBgpRoutePropagation: true // Prevent VPN GW from propagating on-prem routes that would bypass firewall inspection
     routes: [
       {
         name: '${routeTableName}-to-hubAzFirewall'
