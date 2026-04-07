@@ -9,7 +9,7 @@ param deployStorage bool = true
 param deployVM bool = true // Toggle to deploy Hub VM
 param enableVmInsightsPerfDcr bool = true // Optional: deploy a perf-focused DCR for VM Insights detailed metrics
 param deployBastion bool = false // Toggle to deploy Bastion Host
-param deployVpnGw bool = false // Toggle to deploy VPN Gateway
+param deployVpnGw bool = true // Toggle to deploy VPN Gateway
 param deployFirewall bool = true // Toggle to deploy Azure Firewall
 
 param natPublicIP string //injected securely from main.bicep for NAT testing
@@ -1015,6 +1015,7 @@ module localGw 'br/public:avm/res/network/local-network-gateway:0.4.0' = if (dep
         '172.16.110.0/24'
         '172.17.111.0/24'
         '10.2.1.0/24'
+        '192.168.0.0/24'
       ]
     }
     tags: { SecurityControl: 'Ignore', CostControl: 'Ignore' }

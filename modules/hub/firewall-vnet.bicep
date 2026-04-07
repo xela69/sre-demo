@@ -181,6 +181,7 @@ var trustedOnPremSubnets = [
   '10.6.1.0/24' //HQ IPs
   '172.16.110.0/24' //DC-1
   '172.17.111.0/24' //DC-2
+  '192.168.0.0/24' //GWifi
 ]
 var publicDnatNets = [
   natPublicIP // Home Vnet
