@@ -8,6 +8,14 @@ param fwPrivateIP string
 param enableFirewallRouting bool = true
 param logAnalyticsWorkspaceId string = ''
 param enableDiagnostics bool = true
+// All Azure-side address spaces (hub + spokes) — used in GatewaySubnet RT to force
+// on-prem→Azure traffic through the firewall for symmetric stateful inspection
+param azureAddressSpaces array = [
+  '10.50.0.0/20' // hub
+  '10.52.0.0/20' // apps-spoke
+  // '10.51.0.0/20' // dc-spoke   — uncomment when deployed
+  // '10.53.0.0/20' // data-spoke — uncomment when deployed
+]
 // Route tables per Spoke region 
 resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = if (enableFirewallRouting) {
   name: routeTableName
@@ -21,19 +29,45 @@ resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = if (enableFi
   }
   properties: {
     disableBgpRoutePropagation: true // Prevent BGP from injecting on-prem-specific routes that would bypass 0.0.0.0/0 → Firewall
-    routes: enableFirewallRouting
-      ? [
-          // ── All traffic through firewall for inspection (including Azure → On-prem) ────
-          {
-            name: '${routeTableName}-to-hubAzFirewall'
-            properties: {
-              addressPrefix: '0.0.0.0/0'
-              nextHopType: 'VirtualAppliance'
-              nextHopIpAddress: fwPrivateIP
-            }
-          }
-        ]
-      : []
+    routes: [
+      // ── All traffic through firewall for inspection (including Azure → On-prem) ────
+      {
+        name: '${routeTableName}-to-hubAzFirewall'
+        properties: {
+          addressPrefix: '0.0.0.0/0'
+          nextHopType: 'VirtualAppliance'
+          nextHopIpAddress: fwPrivateIP
+        }
+      }
+    ]
+  }
+}
+
+// GatewaySubnet route table — forces on-prem→Azure traffic through Azure Firewall so the
+// firewall has state for BOTH directions (fixes asymmetric routing for on-prem-initiated sessions).
+// Only specific Azure address prefixes are added; 0.0.0.0/0 must NOT be added to GatewaySubnet.
+resource gatewaySubnetRouteTable 'Microsoft.Network/routeTables@2024-07-01' = if (enableFirewallRouting) {
+  name: '${routeTableName}-gw'
+  location: location
+  tags: {
+    Service: 'Network'
+    CostCenter: 'Infrastructure'
+    Environment: 'Production'
+    SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
+  }
+  properties: {
+    disableBgpRoutePropagation: false // must stay false — GatewaySubnet needs BGP routes to function
+    routes: [
+      for (prefix, i) in azureAddressSpaces: {
+        name: 'gw-to-fw-azure-${i}'
+        properties: {
+          addressPrefix: prefix
+          nextHopType: 'VirtualAppliance'
+          nextHopIpAddress: fwPrivateIP
+        }
+      }
+    ]
   }
 }
 
@@ -93,21 +127,25 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = {
             ? {
                 id: firewallSubnetRouteTable.id
               }
-            : enableFirewallRouting && !contains(
-                  [
-                    'GatewaySubnet'
-                    'privateEPSubnet'
-                    'AzureBastionSubnet'
-                    'appGatewaySubnet'
-                    'dns-inbound'
-                    'dns-outbound'
-                  ],
-                  subnetNames[i]
-                )
+            : subnetNames[i] == 'GatewaySubnet' && enableFirewallRouting
                 ? {
-                    id: hubRouteTable!.id
+                    id: gatewaySubnetRouteTable!.id
                   }
-                : null
+                : enableFirewallRouting && !contains(
+                      [
+                        'GatewaySubnet'
+                        'privateEPSubnet'
+                        'AzureBastionSubnet'
+                        'appGatewaySubnet'
+                        'dns-inbound'
+                        'dns-outbound'
+                      ],
+                      subnetNames[i]
+                    )
+                    ? {
+                        id: hubRouteTable!.id
+                      }
+                    : null
           delegations: contains(['dns-inbound', 'dns-outbound'], subnetNames[i])
             ? [
                 {

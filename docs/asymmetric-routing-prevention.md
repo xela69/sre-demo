@@ -1,18 +1,5 @@
 # Asymmetric Routing Prevention: Hub-Spoke Inspection Strategy
 
-the hub and spoke topology setup specifically with respect to traffic inspection, are as followed:
-
-East-West Inspection:
-  hubSubsubnets to spokeSubnets -- inspected
-  spokesubnet to spokesubnet -- inspected
-
-Azure to Internet -- inspected
-
-Azure to Onprem: inspected
-  hub subnet or spokes Subnet to onprem prefixes vpn gateway -- Inspected
-  return traffic onprem to azure -- Not Inspected
-
-
 ## Overview
 
 In a hub-spoke topology with Azure Firewall and a VPN Gateway, traffic inspection goals are:
@@ -21,9 +8,11 @@ In a hub-spoke topology with Azure Firewall and a VPN Gateway, traffic inspectio
 |------|-----------|------------|
 | Spoke ↔ Spoke (East-West) | Both | ✅ Inspected by Azure Firewall |
 | Azure (Hub/Spoke) → On-prem | Outbound | ✅ Inspected by Azure Firewall |
-| On-prem → Azure (Hub/Spoke) | Return | ❌ Not inspected (bypass firewall) |
+| On-prem → Azure (Hub/Spoke) | Inbound | ✅ Inspected by Azure Firewall (via GatewaySubnet RT) |
 
-Return traffic from on-prem bypasses the firewall to avoid double-inspection and asymmetric routing issues. The Azure VPN Gateway routes directly to spoke VNets via gateway transit peering.
+All three flows are inspected by Azure Firewall to maintain **symmetric stateful inspection**. The GatewaySubnet route table (`hubRouteTable-gw`) redirects on-prem-initiated traffic through the firewall before it reaches spoke/hub VMs. This is required because spoke and hub VM subnets use `0.0.0.0/0 → Firewall` UDRs — if on-prem traffic bypassed the firewall, the VM's reply would hit the firewall which has **no session state** (never saw the SYN), causing the firewall to drop the reply.
+
+> **Common misconception**: It may seem like on-prem → Azure traffic should bypass the firewall to "avoid double-inspection". In reality, the firewall handles both legs of the same session statelessly on the return path — there is no double-inspection. The firewall sees the initial SYN, creates state, and return packets match that state without re-inspection.
 
 ---
 
@@ -45,44 +34,55 @@ Spoke VM (10.51.0.4) → On-prem (10.2.1.5)
    • Protocol:    TCP/UDP/ICMP → ALLOW ✓
 
 3. Firewall subnet route table:
-   • 10.2.1.0/24 → VirtualNetworkGateway        ← on-prem UDRs on firewall RT (not hub VM RT)
-   • 10.6.1.0/24 → VirtualNetworkGateway
-   • 172.16.110.0/24 → VirtualNetworkGateway
-   • 172.17.111.0/24 → VirtualNetworkGateway
-   • 0.0.0.0/0   → Internet                     ← Azure requirement for AzureFirewallSubnet
+   • 0.0.0.0/0 → Internet                       ← Azure requirement for AzureFirewallSubnet
+   • on-prem routes injected via BGP propagation from VPN GW (disableBgpRoutePropagation: false)
 
 4. VPN Gateway → on-prem tunnel → FortiGate receives packet
 
 ✅ INSPECTED
 ```
 
-### Flow 2: On-prem → Azure Spoke (NOT INSPECTED — bypasses firewall)
+### Flow 2: On-prem → Azure Spoke (INSPECTED — symmetric with Flow 1)
 
 ```
 On-prem (10.2.1.5) → Spoke VM (10.51.0.4)
 
 1. Packet arrives at hub VPN Gateway via IPsec tunnel
 
-2. No UDR on GatewaySubnet — VPN GW routes directly using:
-   • BGP-learned route: 10.51.0.0/20 via hub→spoke VNet peering
-   • useRemoteGateways: true on spoke peering enables this bypass path
+2. GatewaySubnet route table (hubRouteTable-gw) lookup:
+   • 10.51.0.0/20 → Azure Firewall (10.50.4.4)   ← redirects to FW before delivery to spoke
+   • 10.50.0.0/20 → Azure Firewall (10.50.4.4)   ← same for hub prefixes
+   • 10.52.0.0/20 → Azure Firewall (10.50.4.4)   ← apps spoke
+   • disableBgpRoutePropagation: false            ← GatewaySubnet must keep BGP routes to function
 
-3. Packet delivered directly to spoke VM — Azure Firewall is bypassed
+3. Azure Firewall receives packet:
+   • Rule: AllowOnPremToAzure
+   • Source:      trustedOnPremIpGroup
+   • Destination: trustedAzureIpGroup
+   • Protocol:    TCP/UDP/ICMP → ALLOW ✓
+   • FW creates session state ✓
 
-❌ NOT INSPECTED — on-prem return traffic bypasses the firewall by design
+4. Firewall routes packet to spoke VM (via VNet routing)
+
+5. Spoke VM replies → 0.0.0.0/0 → Firewall:
+   • FW matches existing state → ALLOW (no re-inspection)
+   → FW routes to VPN GW → on-prem
+
+✅ INSPECTED — symmetric, stateful (FW sees both legs)
 ```
 
-> **Design intent**: GatewaySubnet has no route table. The VPN Gateway uses BGP-learned peering routes to deliver on-prem traffic directly to spoke VNets. Azure-initiated sessions (Flow 1) are still inspected outbound; the return leg is not. Acceptable when the on-prem site is a trusted corporate network and the primary inspection boundary is Azure-outbound traffic.
+> **Why GatewaySubnet RT is required**: Without it, VPN GW delivers on-prem packets directly to the destination subnet, bypassing the firewall. The Azure VM then replies via `0.0.0.0/0 → Firewall`, but the firewall has **no state** for the connection (never saw the SYN) and drops the reply. The GatewaySubnet RT forces on-prem-initiated traffic through the firewall first, making both legs symmetric.
 
-### Flow 3: On-prem → Hub VM (NOT INSPECTED — same as Flow 2)
+### Flow 3: On-prem → Hub VM (INSPECTED — same as Flow 2)
 
 ```
 On-prem (10.2.1.5) → Hub VM (10.50.0.4)
 
-1. No UDR on GatewaySubnet — VPN GW routes directly to hub VM subnet
-2. Packet delivered directly to hub VM — Azure Firewall is bypassed
+1. GatewaySubnet RT (hubRouteTable-gw): 10.50.0.0/20 → Azure Firewall ✓
+2. Firewall: AllowOnPremToAzure → ALLOW, creates state
+3. Hub VM replies → 0.0.0.0/0 → Firewall → matches state → on-prem
 
-❌ NOT INSPECTED
+✅ INSPECTED — symmetric
 ```
 
 ### Flow 4: Spoke ↔ Spoke East-West (INSPECTED both directions)
@@ -140,8 +140,23 @@ properties: {
 
 > **Why no on-prem UDRs here**: Azure Firewall subnet does **not** support custom UDRs for on-prem prefixes. Adding them puts the firewall into a faulted state (`FirewallPolicyUpdateFailed`). Instead, `disableBgpRoutePropagation: false` lets the VPN GW automatically inject on-prem routes into the firewall subnet's effective routes via BGP. The firewall uses those BGP-propagated routes to forward inspected traffic to the VPN GW.
 
-### GatewaySubnet
-No route table is applied. The VPN Gateway routes return traffic from on-prem directly to spoke VNets using BGP-learned peering routes (`useRemoteGateways: true` on spokes). This is intentional — on-prem return traffic bypasses the firewall.
+### GatewaySubnet Route Table (`hubRouteTable-gw`)
+Applied to: `GatewaySubnet` only
+
+```bicep
+properties: {
+  disableBgpRoutePropagation: false  // must stay false — GatewaySubnet needs BGP routes to function
+  routes: [
+    // One entry per Azure address space (hub + each spoke)
+    // Only specific Azure prefixes — 0.0.0.0/0 must NOT be added to GatewaySubnet
+    { name: 'gw-to-fw-hub',       addressPrefix: '10.50.0.0/20', nextHopType: 'VirtualAppliance', nextHopIpAddress: fwPrivateIP }
+    { name: 'gw-to-fw-apps',      addressPrefix: '10.52.0.0/20', nextHopType: 'VirtualAppliance', nextHopIpAddress: fwPrivateIP }
+    // add dc-spoke, data-spoke entries when those VNets are deployed
+  ]
+}
+```
+
+> **Why only specific prefixes (not 0.0.0.0/0)**: Azure does not support `0.0.0.0/0` on GatewaySubnet. Only host or network routes for your Azure address space are valid here.
 
 ### Spoke Route Tables (`appsRouteTable`, `dcRouteTable`, `dataRouteTable`)
 
@@ -172,7 +187,7 @@ Hub peering  → Spoke:  allowGatewayTransit: true,  useRemoteGateways: false
 Spoke peering → Hub:   allowGatewayTransit: false, useRemoteGateways: true
 ```
 
-`useRemoteGateways: true` on spoke peering enables the VPN Gateway in the hub to route traffic directly to spoke VNets — this is what allows on-prem return traffic to bypass the firewall.
+`useRemoteGateways: true` on spoke peering enables the VPN Gateway in the hub to advertise spoke VNet address spaces to on-prem. Without the GatewaySubnet route table (`hubRouteTable-gw`), the VPN GW would deliver on-prem traffic directly to spoke VNets, bypassing the firewall. The GatewaySubnet RT overrides this by redirecting all Azure-destined traffic (hub + spoke prefixes) to the firewall first.
 
 ---
 
@@ -186,22 +201,94 @@ Spoke peering → Hub:   allowGatewayTransit: false, useRemoteGateways: true
 
 **On-prem IP Group** (`ipg-trusted-onprem`): `10.2.1.0/24`, `10.6.1.0/24`, `172.16.110.0/24`, `172.17.111.0/24`
 
-**`AllowOnPremToAzure`** is intentionally defined but effectively unused for traffic that bypasses the firewall via VPN GW → peering. It handles the edge case where on-prem traffic arrives at a hub subnet with only a `0.0.0.0/0 → Firewall` UDR (e.g., hub VMs initiating sessions back to on-prem sources).
+**`AllowOnPremToAzure`** is actively used for all on-prem → Azure traffic. The GatewaySubnet route table (`hubRouteTable-gw`) forces on-prem-initiated packets through the firewall, where this rule evaluates and allows matching traffic. This ensures the firewall creates session state for the connection, enabling symmetric stateful inspection for the entire session lifecycle.
 
 ---
+
+## Deployment Prerequisites
+
+The hub VNet module (`modules/hub/hubvnet.bicep`) gates all firewall routing on the `enableFirewallRouting` parameter. This **must** be set to `true` for the traffic inspection design to work:
+
+```json
+// hub deployment parameters — ensure this is set
+"enableFirewallRouting": { "value": true }
+```
+
+When `enableFirewallRouting: true`:
+1. `hubRouteTable` gets the `0.0.0.0/0 → 10.50.4.4` route (hub VM subnets)
+2. `hubRouteTable-gw` is created with all Azure address space routes → `10.50.4.4` (GatewaySubnet)
+3. `hubRouteTable-gw` is attached to GatewaySubnet
+4. Hub VNet DNS is set to the firewall private IP
+
+When `enableFirewallRouting: false` (or omitted), none of the above are deployed and **all traffic bypasses the firewall**.
+
+> **Note**: The spoke VNet module (`modules/spokes/spokevnets.bicep`) always creates the `0.0.0.0/0 → Firewall` route with `disableBgpRoutePropagation: true` — it does not have a conditional flag.
 
 ## Files Modified
 
 | File | Change |
 |------|--------|
-| `modules/hub/hubvnet.bicep` | Removed `gatewaySubnetRouteTable` (GatewaySubnet has no RT — on-prem return traffic bypasses FW by design); fixed `hubRouteTable.disableBgpRoutePropagation: true`; hub/spoke VM subnets use `0.0.0.0/0 → FW` |
+| `modules/hub/hubvnet.bicep` | `hubRouteTable` and `hubRouteTable-gw` gated on `enableFirewallRouting`; `hubRouteTable.disableBgpRoutePropagation: true`; `hubRouteTable-gw` has Azure address space routes → FW; GatewaySubnet wired to `hubRouteTable-gw` |
 | `modules/spokes/spokevnets.bicep` | `disableBgpRoutePropagation: true`; `useRemoteGateways: true` on spoke peering |
+
+---
+
+## Live Environment Audit (2026-04-08)
+
+Audit performed against subscriptions `ebc6a927-*` (hub) and `42021d44-*` (apps-spoke).
+
+### Resources Confirmed
+
+| Component | Name | Status |
+|-----------|------|--------|
+| Azure Firewall | `xelaAzFirewall` | Deployed, Premium, private IP `10.50.4.4` |
+| VPN Gateway | `xelavpngvnso` | Deployed, VpnGw1AZ, RouteBased, BGP off (static routes) |
+| VPN Connection | `XelaVPNConnection` | Connected, IKEv2, DPD 45s, 0 bytes (routing fix pending) |
+| Local Network Gateway | `xelalocalgw` | Peer `97.94.106.46`, prefixes: `10.6.1.0/24`, `172.16.110.0/24`, `172.17.111.0/24`, `10.2.1.0/24`, `192.168.0.0/24` |
+| Hub VNet | `hubRG-VNet` | `10.50.0.0/20` |
+| Apps Spoke VNet | `AppsRG-VNet` | `10.52.0.0/20` |
+| Data Spoke VNet | — | Not yet deployed |
+| DC Spoke VNet | — | Not yet deployed |
+
+### Route Table Status
+
+| Route Table | Routes | Subnets | Status |
+|-------------|--------|---------|--------|
+| `hubRouteTable` | `0.0.0.0/0 → 10.50.4.4` | `vmSubnet`, `appSubnet` | ✅ Manually remediated 2026-04-08 |
+| `hubRouteTable-fw` | `0.0.0.0/0 → Internet` | `AzureFirewallSubnet` | ✅ Correct |
+| `hubRouteTable-gw` | Azure address spaces → `10.50.4.4` | `GatewaySubnet` | ⚠️ Pending Bicep fix + redeploy |
+| `appsRouteTable` | `0.0.0.0/0 → 10.50.4.4` | `vmSubnet`, `appSubnet` | ✅ Correct |
+
+### Peering Status
+
+| Peering | AllowGwTransit | UseRemoteGW | State |
+|---------|---------------|-------------|-------|
+| `hub-to-Apps-VNet-peering` | true | false | Connected ✅ |
+| `AppsRG-VNet-to-hubRG-VNet-Peering` | false | true | Connected ✅ |
 
 ---
 
 ## Validation
 
-### Check hub VM effective routes (expect no on-prem UDRs, only 0.0.0.0/0 → VirtualAppliance)
+### 1. Verify route tables exist and have correct routes
+```bash
+az network route-table list \
+  --resource-group hubRG \
+  --subscription ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9 \
+  --query "[].{name:name, disableBgp:disableBgpRoutePropagation, routes:routes[].{name:name, prefix:addressPrefix, nextHop:nextHopIpAddress}}" \
+  --output json
+```
+
+### 2. Verify GatewaySubnet has hubRouteTable-gw attached
+```bash
+az network vnet subnet show \
+  --resource-group hubRG --vnet-name hubRG-VNet --name GatewaySubnet \
+  --subscription ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9 \
+  --query "{routeTable:routeTable.id}" --output json
+# Expected: routeTable references hubRouteTable-gw
+```
+
+### 3. Check hub VM effective routes (expect 0.0.0.0/0 → VirtualAppliance 10.50.4.4)
 ```bash
 az network nic show-effective-route-table \
   --resource-group hubRG-VM \
@@ -209,7 +296,7 @@ az network nic show-effective-route-table \
   --output table
 ```
 
-### Check firewall subnet effective routes (expect on-prem UDRs + 0.0.0.0/0 → Internet)
+### 4. Check firewall subnet effective routes (expect BGP-propagated on-prem routes + 0.0.0.0/0 → Internet)
 ```bash
 az network nic show-effective-route-table \
   --resource-group hubRG \
@@ -217,17 +304,23 @@ az network nic show-effective-route-table \
   --output table
 ```
 
-### End-to-end ping test (from FortiGate — should succeed and show in firewall logs)
+### 5. End-to-end ping test (from FortiGate — should succeed and show in firewall logs)
 ```
 execute ping-options source 10.2.1.1
 execute ping 10.50.0.5
 ```
 
-### Firewall log — confirm Azure→OnPrem traffic is logged (inspected)
+### 6. Firewall log — confirm both directions are logged (inspected)
 ```bash
+# Azure → On-prem (outbound)
 az monitor log-analytics query \
   --workspace <workspace-id> \
-  --analytics-query "AzureDiagnostics | where ResourceType == 'AZUREFIREWALLS' | where msg_s contains '10.2.1'"
+  --analytics-query "AZFWNetworkRule | where DestinationIp startswith '10.2.1' | project TimeGenerated, SourceIp, DestinationIp, Action | take 10"
+
+# On-prem → Azure (inbound — confirms GatewaySubnet RT is working)
+az monitor log-analytics query \
+  --workspace <workspace-id> \
+  --analytics-query "AZFWNetworkRule | where SourceIp startswith '10.2.1' | project TimeGenerated, SourceIp, DestinationIp, Action | take 10"
 ```
 
 
