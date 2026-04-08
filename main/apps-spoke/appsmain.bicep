@@ -3,8 +3,10 @@ param deploySpokeVnet bool = true
 param deployVM bool = true
 param deployStorage bool = true
 param deploySQLVM bool = true
+param deployContainerApp bool = false
 
 param accessKey string
+param natPublicIP string = ''
 targetScope = 'subscription' // Required for resource group deployments
 
 param spokeRgName string = 'AppsRG'
@@ -78,7 +80,7 @@ module spokeVM 'br/public:avm/res/compute/virtual-machine:0.9.0' = if (deployVM)
     name: 'AppsVM'
     location: spokeLocation
     osType: 'Windows'
-    vmSize: 'Standard_B2ms'
+    vmSize: 'Standard_D2s_v3'
     zone: 0
     encryptionAtHost: false
     adminUsername: 'vmuser'
@@ -142,7 +144,7 @@ module storage 'br/public:avm/res/storage/storage-account:0.15.0' = if (deploySt
   name: 'AppsStorage'
   scope: resourceGroup(spokeSubId, storageRGroup.name)
   params: {
-    name: 'apps${take(uniqueString(spokeStorageRgName), 4)}'
+    name: 'apps${take(uniqueString(spokeSubId, spokeStorageRgName), 8)}'
     location: spokeLocation
     skuName: 'Standard_GRS'
     accessTier: 'Hot'
@@ -217,7 +219,7 @@ module sqlVM 'br/public:avm/res/compute/virtual-machine:0.9.0' = if (deploySQLVM
     name: 'AppsSQLVM'
     location: spokeLocation
     osType: 'Windows'
-    vmSize: 'Standard_B2ms'
+    vmSize: 'Standard_D2s_v3'
     zone: 0
     encryptionAtHost: false
     adminUsername: 'vmuser'
@@ -268,4 +270,47 @@ module sqlVM 'br/public:avm/res/compute/virtual-machine:0.9.0' = if (deploySQLVM
     }
   }
   dependsOn: [spokeVnet]
+}
+
+// ── Hub resource lookups (cross-subscription) for container app wiring ──
+// ACR is in hubRG-Security, LAW+ACR identity are in hubRG-Security / hubRG-Monitor
+resource hubAcr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
+  name: 'xelaAcr'
+  scope: resourceGroup(hubVnetSubscriptionId, 'hubRG-Security')
+}
+resource hubAcrIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
+  name: 'xelaAcr'
+  scope: resourceGroup(hubVnetSubscriptionId, 'hubRG-Security')
+}
+resource hubLaw 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
+  name: 'xelaLogs${take(uniqueString('hubRG-Monitor'), 4)}'
+  scope: resourceGroup(hubVnetSubscriptionId, 'hubRG-Monitor')
+}
+
+// ── Container App deployment ──
+param spokeContainerRgName string = 'AppsRG-ContainerApp'
+
+resource containerRGroup 'Microsoft.Resources/resourceGroups@2024-11-01' = if (deployContainerApp) {
+  name: spokeContainerRgName
+  location: spokeLocation
+  tags: {
+    Service: 'ContainerApp'
+    CostCenter: 'Infrastructure'
+    Environment: 'Production'
+    Owner: 'Xelatech'
+    SecurityControl: 'Ignore'
+    CostControl: 'Ignore'
+  }
+}
+
+module containerApp '../../modules/apps/containerApp.bicep' = if (deployContainerApp) {
+  name: 'AppsContainerApp'
+  scope: resourceGroup(spokeSubId, containerRGroup.name)
+  params: {
+    location: spokeLocation
+    acrLoginServer: hubAcr.properties.loginServer
+    managedIdentityId: hubAcrIdentity.id
+    logAnalyticsWorkspaceId: hubLaw.id
+    natPublicIP: natPublicIP
+  }
 }

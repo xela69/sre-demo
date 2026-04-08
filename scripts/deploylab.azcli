@@ -59,7 +59,7 @@ echo $appsSubId
 az account set --subscription $appsSubId
 az account show --query "{Name:name, ID:id}" -o table
 
-az deployment sub create --subscription $appsSubId -l centralus --template-file ./main/apps-spoke/appsmain.bicep --parameters accessKey=$(cat ./docs/pwd.txt) --what-if
+az deployment sub create --subscription $appsSubId -l centralus --template-file ./main/apps-spoke/appsmain.bicep --parameters accessKey=$(cat ./docs/pwd.txt) natPublicIP=$(curl -4 -s ifconfig.me) --what-if
 
 # check data and schema on AppsSQLVM
 # ── Post-deploy: enable VPN GW + flip spoke peerings to useRemoteGateways=true ──
