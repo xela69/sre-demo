@@ -180,11 +180,6 @@ resource appsvnet 'Microsoft.Network/virtualNetworks@2024-07-01' existing = if (
   name: 'AppsRG-VNet'
   scope: resourceGroup('42021d44-97d2-47a1-8245-a77149dda4c3', 'AppsRG')
 }
-// Create peering from DataVnet to hub VNet
-resource datavnet 'Microsoft.Network/virtualNetworks@2024-07-01' existing = if (Peering) {
-  name: 'DataRG-VNet'
-  scope: resourceGroup('8de6c6e8-53af-4ded-a480-fd20c6093e78', 'DataRG')
-}
 
 resource hubToAppsPeering 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2024-07-01' = if (Peering) {
   name: 'hub-to-Apps-VNet-peering'
@@ -199,6 +194,12 @@ resource hubToAppsPeering 'Microsoft.Network/virtualNetworks/virtualNetworkPeeri
     useRemoteGateways: false
   }
 }
+/* Create peering from DataVnet to hub VNet
+resource datavnet 'Microsoft.Network/virtualNetworks@2024-07-01' existing = if (Peering) {
+  name: 'DataRG-VNet'
+  scope: resourceGroup('8de6c6e8-53af-4ded-a480-fd20c6093e78', 'DataRG')
+}
+
 resource hubToDataPeering 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2024-07-01' = if (Peering) {
   name: 'hub-to-Data-VNet-peering'
   parent: vnet
@@ -211,7 +212,7 @@ resource hubToDataPeering 'Microsoft.Network/virtualNetworks/virtualNetworkPeeri
     allowGatewayTransit: true // Enable gateway transit for VPNGW
     useRemoteGateways: false
   }
-}
+}*/
 
 resource vnetDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (enableDiagnostics && !empty(logAnalyticsWorkspaceId)) {
   name: 'diag-${vnet.name}'
