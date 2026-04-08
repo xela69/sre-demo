@@ -1064,6 +1064,8 @@ module monitorDiag '../../modules/hub/monitor-diag.bicep' = if (deploylogsAnalyt
     vmInsightsDcrName: vmInsightsDcrName
     vmInsightsPerfDcrName: vmInsightsPerfDcrName
     enableVmInsightsPerfDcr: enableVmInsightsPerfDcr
+    // Lock the SRE portal identity so its principalId stays stable across deployments
+    sreAgentIdentityName: 'sre-demo-${uniqueString(monitorRgName)}'
   }
   dependsOn: [appInsights, vmDataCollectionRule]
 }
@@ -1090,3 +1092,5 @@ module vmDiag '../../modules/hub/vm-diag.bicep' = if (deployVM) {
   }
   dependsOn: [hubVM, linuxVM]
 }
+
+

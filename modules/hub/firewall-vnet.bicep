@@ -930,6 +930,7 @@ resource fwDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview
   scope: firewall
   properties: {
     workspaceId: logAnalyticsWorkspaceId
+    logAnalyticsDestinationType: 'Dedicated' // Resource Specific tables (recommended over AzureDiagnostics)
     logs: [
       {
         category: 'AZFWNetworkRule'

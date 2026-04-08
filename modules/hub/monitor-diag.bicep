@@ -6,6 +6,9 @@ param vmInsightsDcrName string
 param vmInsightsPerfDcrName string
 param enableVmInsightsPerfDcr bool = true
 
+@description('Name of the SRE portal managed identity in this RG. Blank to skip the lock.')
+param sreAgentIdentityName string = ''
+
 resource appInsightsExisting 'Microsoft.Insights/components@2020-02-02' existing = {
   name: appInsightsName
 }
@@ -51,6 +54,22 @@ resource vmInsightsDcrDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-pre
         enabled: true
       }
     ]
+  }
+}
+
+// ── SRE Agent identity protection ──
+// Locks the portal-managed identity so redeployments can't delete it and cause
+// RoleAssignmentUpdateNotPermitted on the next run (principal ID would change).
+resource sreAgentIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = if (!empty(sreAgentIdentityName)) {
+  name: sreAgentIdentityName
+}
+
+resource sreAgentIdentityLock 'Microsoft.Authorization/locks@2020-05-01' = if (!empty(sreAgentIdentityName)) {
+  name: 'sre-agent-identity-lock'
+  scope: sreAgentIdentity
+  properties: {
+    level: 'CanNotDelete'
+    notes: 'Protects SRE portal managed identity from deletion during IaC redeployment.'
   }
 }
 

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "14148123990821856150"
+      "templateHash": "7453813301543647561"
     }
   },
   "parameters": {
@@ -51,7 +51,7 @@
     },
     "deployVpnGw": {
       "type": "bool",
-      "defaultValue": false
+      "defaultValue": true
     },
     "deployFirewall": {
       "type": "bool",
@@ -84,10 +84,6 @@
     "routeTableName": {
       "type": "string",
       "defaultValue": "hubRouteTable"
-    },
-    "vpnGwRouteTableName": {
-      "type": "string",
-      "defaultValue": "vpnGatewayTable"
     },
     "vmRgName": {
       "type": "string",
@@ -182,7 +178,8 @@
         "Service": "Network",
         "CostCenter": "Infrastructure",
         "Environment": "Production",
-        "SecurityControl": "Ignore"
+        "SecurityControl": "Ignore",
+        "CostControl": "Ignore"
       }
     },
     {
@@ -195,7 +192,8 @@
         "Service": "Security",
         "CostCenter": "Infrastructure",
         "Environment": "Production",
-        "SecurityControl": "Ignore"
+        "SecurityControl": "Ignore",
+        "CostControl": "Ignore"
       }
     },
     {
@@ -209,7 +207,8 @@
         "CostCenter": "Application",
         "Environment": "Production",
         "Owner": "ArnoldP",
-        "SecurityControl": "Ignore"
+        "SecurityControl": "Ignore",
+        "CostControl": "Ignore"
       }
     },
     {
@@ -222,7 +221,8 @@
         "Service": "Logging",
         "CostCenter": "Infrastructure",
         "Environment": "Production",
-        "SecurityControl": "Ignore"
+        "SecurityControl": "Ignore",
+        "CostControl": "Ignore"
       }
     },
     {
@@ -235,7 +235,8 @@
         "Service": "Storage",
         "CostCenter": "Infrastructure",
         "Environment": "Production",
-        "SecurityControl": "Ignore"
+        "SecurityControl": "Ignore",
+        "CostControl": "Ignore"
       }
     },
     {
@@ -248,7 +249,8 @@
         "Service": "Virtual Machines",
         "CostCenter": "Infrastructure",
         "Environment": "Production",
-        "SecurityControl": "Ignore"
+        "SecurityControl": "Ignore",
+        "CostControl": "Ignore"
       }
     },
     {
@@ -293,9 +295,6 @@
           "routeTableName": {
             "value": "[parameters('routeTableName')]"
           },
-          "vpnGwRouteTableName": {
-            "value": "[parameters('vpnGwRouteTableName')]"
-          },
           "fwPrivateIP": {
             "value": "[parameters('firewallPrivateIP')]"
           },
@@ -314,7 +313,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "6210466196440542566"
+              "templateHash": "4087919660786844122"
             }
           },
           "parameters": {
@@ -336,9 +335,6 @@
             "routeTableName": {
               "type": "string"
             },
-            "vpnGwRouteTableName": {
-              "type": "string"
-            },
             "fwPrivateIP": {
               "type": "string"
             },
@@ -357,6 +353,15 @@
             "Peering": {
               "type": "bool",
               "defaultValue": false
+            },
+            "azureAddressSpaces": {
+              "type": "array",
+              "defaultValue": [
+                "10.50.0.0/20",
+                "10.51.0.0/20",
+                "10.52.0.0/20",
+                "10.53.0.0/20"
+              ]
             }
           },
           "resources": [
@@ -369,27 +374,68 @@
                 "Service": "Network",
                 "CostCenter": "Infrastructure",
                 "Environment": "Production",
-                "SecurityControl": "Ignore"
+                "SecurityControl": "Ignore",
+                "CostControl": "Ignore"
               },
               "properties": {
                 "disableBgpRoutePropagation": true,
-                "routes": "[if(parameters('enableFirewallRouting'), createArray(createObject('name', format('{0}-to-onprem-fortiwifi', parameters('routeTableName')), 'properties', createObject('addressPrefix', '10.2.1.0/24', 'nextHopType', 'VirtualAppliance', 'nextHopIpAddress', parameters('fwPrivateIP'))), createObject('name', format('{0}-to-onprem-hq', parameters('routeTableName')), 'properties', createObject('addressPrefix', '10.6.1.0/24', 'nextHopType', 'VirtualAppliance', 'nextHopIpAddress', parameters('fwPrivateIP'))), createObject('name', format('{0}-to-onprem-dc1', parameters('routeTableName')), 'properties', createObject('addressPrefix', '172.16.110.0/24', 'nextHopType', 'VirtualAppliance', 'nextHopIpAddress', parameters('fwPrivateIP'))), createObject('name', format('{0}-to-onprem-dc2', parameters('routeTableName')), 'properties', createObject('addressPrefix', '172.17.111.0/24', 'nextHopType', 'VirtualAppliance', 'nextHopIpAddress', parameters('fwPrivateIP'))), createObject('name', format('{0}-to-hubAzFirewall', parameters('routeTableName')), 'properties', createObject('addressPrefix', '0.0.0.0/0', 'nextHopType', 'VirtualAppliance', 'nextHopIpAddress', parameters('fwPrivateIP')))), createArray())]"
+                "routes": "[if(parameters('enableFirewallRouting'), createArray(createObject('name', format('{0}-to-hubAzFirewall', parameters('routeTableName')), 'properties', createObject('addressPrefix', '0.0.0.0/0', 'nextHopType', 'VirtualAppliance', 'nextHopIpAddress', parameters('fwPrivateIP')))), createArray())]"
               }
             },
             {
+              "condition": "[parameters('enableFirewallRouting')]",
               "type": "Microsoft.Network/routeTables",
               "apiVersion": "2024-07-01",
-              "name": "[format('{0}-fw-subnet', parameters('routeTableName'))]",
+              "name": "[format('{0}-gw', parameters('routeTableName'))]",
               "location": "[parameters('location')]",
               "tags": {
                 "Service": "Network",
                 "CostCenter": "Infrastructure",
                 "Environment": "Production",
-                "SecurityControl": "Ignore"
+                "SecurityControl": "Ignore",
+                "CostControl": "Ignore"
               },
               "properties": {
-                "disableBgpRoutePropagation": true,
-                "routes": "[if(parameters('enableFirewallRouting'), createArray(createObject('name', 'fw-to-onprem-fortiwifi', 'properties', createObject('addressPrefix', '10.2.1.0/24', 'nextHopType', 'VirtualNetworkGateway')), createObject('name', 'fw-to-onprem-hq', 'properties', createObject('addressPrefix', '10.6.1.0/24', 'nextHopType', 'VirtualNetworkGateway')), createObject('name', 'fw-to-onprem-dc1', 'properties', createObject('addressPrefix', '172.16.110.0/24', 'nextHopType', 'VirtualNetworkGateway')), createObject('name', 'fw-to-onprem-dc2', 'properties', createObject('addressPrefix', '172.17.111.0/24', 'nextHopType', 'VirtualNetworkGateway')), createObject('name', 'fw-default-to-internet', 'properties', createObject('addressPrefix', '0.0.0.0/0', 'nextHopType', 'Internet'))), createArray())]"
+                "copy": [
+                  {
+                    "name": "routes",
+                    "count": "[length(parameters('azureAddressSpaces'))]",
+                    "input": {
+                      "name": "[format('gw-to-fw-azure-{0}', copyIndex('routes'))]",
+                      "properties": {
+                        "addressPrefix": "[parameters('azureAddressSpaces')[copyIndex('routes')]]",
+                        "nextHopType": "VirtualAppliance",
+                        "nextHopIpAddress": "[parameters('fwPrivateIP')]"
+                      }
+                    }
+                  }
+                ],
+                "disableBgpRoutePropagation": false
+              }
+            },
+            {
+              "type": "Microsoft.Network/routeTables",
+              "apiVersion": "2024-07-01",
+              "name": "[format('{0}-fw', parameters('routeTableName'))]",
+              "location": "[parameters('location')]",
+              "tags": {
+                "Service": "Network",
+                "CostCenter": "Infrastructure",
+                "Environment": "Production",
+                "SecurityControl": "Ignore",
+                "CostControl": "Ignore"
+              },
+              "properties": {
+                "disableBgpRoutePropagation": false,
+                "routes": [
+                  {
+                    "name": "fw-subnet-to-internet",
+                    "properties": {
+                      "addressPrefix": "0.0.0.0/0",
+                      "nextHopType": "Internet"
+                    }
+                  }
+                ]
               }
             },
             {
@@ -401,7 +447,8 @@
                 "Service": "Network",
                 "CostCenter": "Infrastructure",
                 "Environment": "Production",
-                "SecurityControl": "Ignore"
+                "SecurityControl": "Ignore",
+                "CostControl": "Ignore"
               },
               "properties": {
                 "copy": [
@@ -415,7 +462,7 @@
                           "[parameters('subnetPrefixes')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]]]"
                         ],
                         "privateEndpointNetworkPolicies": "[if(equals(parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]], 'privateEPSubnet'), 'Disabled', null())]",
-                        "routeTable": "[if(equals(parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]], 'AzureFirewallSubnet'), createObject('id', resourceId('Microsoft.Network/routeTables', format('{0}-fw-subnet', parameters('routeTableName')))), if(not(contains(createArray('GatewaySubnet', 'privateEPSubnet', 'AzureBastionSubnet', 'appGatewaySubnet', 'dns-inbound', 'dns-outbound'), parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]])), createObject('id', resourceId('Microsoft.Network/routeTables', parameters('routeTableName'))), null()))]",
+                        "routeTable": "[if(equals(parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]], 'AzureFirewallSubnet'), createObject('id', resourceId('Microsoft.Network/routeTables', format('{0}-fw', parameters('routeTableName')))), if(and(equals(parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]], 'GatewaySubnet'), parameters('enableFirewallRouting')), createObject('id', resourceId('Microsoft.Network/routeTables', format('{0}-gw', parameters('routeTableName')))), if(not(contains(createArray('GatewaySubnet', 'privateEPSubnet', 'AzureBastionSubnet', 'appGatewaySubnet', 'dns-inbound', 'dns-outbound'), parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]])), createObject('id', resourceId('Microsoft.Network/routeTables', parameters('routeTableName'))), null())))]",
                         "delegations": "[if(contains(createArray('dns-inbound', 'dns-outbound'), parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]]), createArray(createObject('name', format('dnsDelegation-{0}', parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]]), 'properties', createObject('serviceName', 'Microsoft.Network/dnsResolvers'))), if(contains(createArray('containerAppSubnet'), parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]]), createArray(createObject('name', format('containerAppsDelegation-{0}', parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]]), 'properties', createObject('serviceName', 'Microsoft.App/containerApps'))), null()))]"
                       }
                     }
@@ -429,7 +476,8 @@
                 "dhcpOptions": "[if(parameters('enableFirewallRouting'), createObject('dnsServers', createArray(parameters('fwPrivateIP'))), null())]"
               },
               "dependsOn": [
-                "[resourceId('Microsoft.Network/routeTables', format('{0}-fw-subnet', parameters('routeTableName')))]",
+                "[resourceId('Microsoft.Network/routeTables', format('{0}-fw', parameters('routeTableName')))]",
+                "[resourceId('Microsoft.Network/routeTables', format('{0}-gw', parameters('routeTableName')))]",
                 "[resourceId('Microsoft.Network/routeTables', parameters('routeTableName'))]"
               ]
             },
@@ -827,7 +875,8 @@
             "value": {
               "Environment": "Production",
               "Component": "ACR",
-              "SecurityControl": "Ignore"
+              "SecurityControl": "Ignore",
+              "CostControl": "Ignore"
             }
           },
           "publicNetworkAccess": {
@@ -4072,7 +4121,8 @@
               "Service": "Logs",
               "CostCenter": "Infrastructure",
               "Environment": "Production",
-              "SecurityControl": "Ignore"
+              "SecurityControl": "Ignore",
+              "CostControl": "Ignore"
             }
           },
           "useResourcePermissions": {
@@ -7113,7 +7163,8 @@
               "Service": "Applications",
               "CostCenter": "Infrastructure",
               "Environment": "Production",
-              "SecurityControl": "Ignore"
+              "SecurityControl": "Ignore",
+              "CostControl": "Ignore"
             }
           }
         },
@@ -7967,7 +8018,8 @@
               "Service": "Monitoring",
               "CostCenter": "Infrastructure",
               "Environment": "Production",
-              "SecurityControl": "Ignore"
+              "SecurityControl": "Ignore",
+              "CostControl": "Ignore"
             }
           }
         },
@@ -9296,7 +9348,8 @@
               "Service": "Monitoring",
               "CostCenter": "Infrastructure",
               "Environment": "Production",
-              "SecurityControl": "Ignore"
+              "SecurityControl": "Ignore",
+              "CostControl": "Ignore"
             }
           }
         },
@@ -10586,7 +10639,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "2867451464918790256"
+              "templateHash": "15988037678844362061"
             }
           },
           "parameters": {
@@ -10676,7 +10729,8 @@
                 "CostCenter": "Infrastructure",
                 "Environment": "Production",
                 "Owner": "ArnoldP",
-                "SecurityControl": "Ignore"
+                "SecurityControl": "Ignore",
+                "CostControl": "Ignore"
               }
             },
             {
@@ -10693,7 +10747,8 @@
                 "CostCenter": "Infrastructure",
                 "Environment": "Production",
                 "Owner": "ArnoldP",
-                "SecurityControl": "Ignore"
+                "SecurityControl": "Ignore",
+                "CostControl": "Ignore"
               },
               "properties": {
                 "virtualNetwork": {
@@ -10721,7 +10776,8 @@
                 "CostCenter": "Infrastructure",
                 "Environment": "Production",
                 "Owner": "ArnoldP",
-                "SecurityControl": "Ignore"
+                "SecurityControl": "Ignore",
+                "CostControl": "Ignore"
               },
               "properties": {
                 "virtualNetwork": {
@@ -10793,7 +10849,8 @@
             "value": {
               "Environment": "Production",
               "CostCenter": "Storage",
-              "SecurityControl": "Ignore"
+              "SecurityControl": "Ignore",
+              "CostControl": "Ignore"
             }
           },
           "accessTier": {
@@ -16353,7 +16410,8 @@
               "CostCenter": "Infrastructure",
               "Environment": "Production",
               "Owner": "Xelatech",
-              "SecurityControl": "Ignore"
+              "SecurityControl": "Ignore",
+              "CostControl": "Ignore"
             }
           }
         },
@@ -21972,7 +22030,8 @@
             "value": {
               "Service": "VM",
               "CostCenter": "Linux",
-              "SecurityControl": "Ignore"
+              "SecurityControl": "Ignore",
+              "CostControl": "Ignore"
             }
           }
         },
@@ -27520,7 +27579,8 @@
               "CostCenter": "Infrastructure",
               "Environment": "Production",
               "Owner": "cps-security",
-              "SecurityControl": "Ignore"
+              "SecurityControl": "Ignore",
+              "CostControl": "Ignore"
             }
           },
           "diagnosticSettings": {
@@ -29294,7 +29354,8 @@
               "CostCenter": "Infrastructure",
               "Environment": "Production",
               "Owner": "Xelatech",
-              "SecurityControl": "Ignore"
+              "SecurityControl": "Ignore",
+              "CostControl": "Ignore"
             }
           }
         },
@@ -30113,7 +30174,8 @@
               "CostCenter": "Infrastructure",
               "Environment": "Production",
               "Owner": "Xelatech",
-              "SecurityControl": "Ignore"
+              "SecurityControl": "Ignore",
+              "CostControl": "Ignore"
             }
           }
         },
@@ -30852,7 +30914,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "1630608111898870891"
+              "templateHash": "12199339118057598909"
             }
           },
           "parameters": {
@@ -30951,7 +31013,8 @@
               "10.2.1.0/24",
               "10.6.1.0/24",
               "172.16.110.0/24",
-              "172.17.111.0/24"
+              "172.17.111.0/24",
+              "192.168.0.0/24"
             ],
             "publicDnatNets": [
               "[parameters('natPublicIP')]"
@@ -31888,6 +31951,7 @@
               "name": "[parameters('diagnosticsName')]",
               "properties": {
                 "workspaceId": "[parameters('logAnalyticsWorkspaceId')]",
+                "logAnalyticsDestinationType": "Dedicated",
                 "logs": [
                   {
                     "category": "AZFWNetworkRule",
@@ -32069,7 +32133,8 @@
               "CostCenter": "Infrastructure",
               "Environment": "Production",
               "Owner": "Xelatech",
-              "SecurityControl": "Ignore"
+              "SecurityControl": "Ignore",
+              "CostControl": "Ignore"
             }
           }
         },
@@ -35071,7 +35136,8 @@
           },
           "tags": {
             "value": {
-              "SecurityControl": "Ignore"
+              "SecurityControl": "Ignore",
+              "CostControl": "Ignore"
             }
           }
         },
@@ -37367,13 +37433,15 @@
                 "10.6.1.0/24",
                 "172.16.110.0/24",
                 "172.17.111.0/24",
-                "10.2.1.0/24"
+                "10.2.1.0/24",
+                "192.168.0.0/24"
               ]
             }
           },
           "tags": {
             "value": {
-              "SecurityControl": "Ignore"
+              "SecurityControl": "Ignore",
+              "CostControl": "Ignore"
             }
           }
         },
@@ -37808,7 +37876,8 @@
           },
           "tags": {
             "value": {
-              "SecurityControl": "Ignore"
+              "SecurityControl": "Ignore",
+              "CostControl": "Ignore"
             }
           }
         },
@@ -38372,6 +38441,9 @@
           },
           "enableVmInsightsPerfDcr": {
             "value": "[parameters('enableVmInsightsPerfDcr')]"
+          },
+          "sreAgentIdentityName": {
+            "value": "[format('sre-demo-{0}', uniqueString(parameters('monitorRgName')))]"
           }
         },
         "template": {
@@ -38381,7 +38453,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "4556805717157288658"
+              "templateHash": "9991234186353847692"
             }
           },
           "parameters": {
@@ -38400,6 +38472,13 @@
             "enableVmInsightsPerfDcr": {
               "type": "bool",
               "defaultValue": true
+            },
+            "sreAgentIdentityName": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Name of the SRE portal managed identity in this RG. Blank to skip the lock."
+              }
             }
           },
           "resources": [
@@ -38443,6 +38522,17 @@
                     "enabled": true
                   }
                 ]
+              }
+            },
+            {
+              "condition": "[not(empty(parameters('sreAgentIdentityName')))]",
+              "type": "Microsoft.Authorization/locks",
+              "apiVersion": "2020-05-01",
+              "scope": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', parameters('sreAgentIdentityName'))]",
+              "name": "sre-agent-identity-lock",
+              "properties": {
+                "level": "CanNotDelete",
+                "notes": "Protects SRE portal managed identity from deletion during IaC redeployment."
               }
             },
             {
