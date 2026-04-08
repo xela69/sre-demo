@@ -99,6 +99,7 @@ module hubToAppsPeering '../../modules/hub/vnet-peering.bicep' = if (deployHubVn
     spokeRgName: 'AppsRG'
     allowGatewayTransit: true
     useRemoteGateways: false
+    peeringName: 'hub-to-Apps-VNet-peering'
   }
   dependsOn: [hubVnet]
 }

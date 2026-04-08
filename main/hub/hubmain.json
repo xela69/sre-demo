@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "9498615906010268873"
+      "templateHash": "7762813348218305082"
     }
   },
   "parameters": {
@@ -59,7 +59,7 @@
     },
     "peerAppsSpoke": {
       "type": "bool",
-      "defaultValue": false
+      "defaultValue": true
     },
     "natPublicIP": {
       "type": "string"
@@ -573,6 +573,9 @@
           },
           "useRemoteGateways": {
             "value": false
+          },
+          "peeringName": {
+            "value": "hub-to-Apps-VNet-peering"
           }
         },
         "template": {
@@ -582,7 +585,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "16746486826881557865"
+              "templateHash": "9980891746601622778"
             }
           },
           "parameters": {
@@ -605,13 +608,17 @@
             "useRemoteGateways": {
               "type": "bool",
               "defaultValue": false
+            },
+            "peeringName": {
+              "type": "string",
+              "defaultValue": "[format('hub-to-{0}-peering', parameters('spokeVnetName'))]"
             }
           },
           "resources": [
             {
               "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
               "apiVersion": "2024-07-01",
-              "name": "[format('{0}/{1}', parameters('hubVnetName'), format('hub-to-{0}-peering', parameters('spokeVnetName')))]",
+              "name": "[format('{0}/{1}', parameters('hubVnetName'), parameters('peeringName'))]",
               "properties": {
                 "remoteVirtualNetwork": {
                   "id": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('spokeSubId'), parameters('spokeRgName')), 'Microsoft.Network/virtualNetworks', parameters('spokeVnetName'))]"

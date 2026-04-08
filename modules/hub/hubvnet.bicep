@@ -12,7 +12,8 @@ param enableDiagnostics bool = true
 // on-prem→Azure traffic through the firewall for symmetric stateful inspection
 param azureAddressSpaces array = [
   '10.50.0.0/20' // hub
-  '10.52.0.0/20' // apps-spoke (centralus)
+  '10.51.0.0/20' // apps-spoke (centralus)
+  '10.52.0.0/20' // data-spoke (centralus)
   '10.53.0.0/20' // dc-spoke
 ]
 
