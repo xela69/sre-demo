@@ -30,7 +30,7 @@ resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
     CostControl: 'Ignore'
   }
   properties: {
-    disableBgpRoutePropagation: false // Prevent VPN GW BGP from advertising on-prem routes that would bypass firewall
+    disableBgpRoutePropagation: true // Prevent VPN GW BGP from advertising on-prem routes that would bypass firewall
     routes: enableFirewallRouting
       ? [
           // ── All traffic through firewall for inspection (including Azure → On-prem) ────
