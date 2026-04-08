@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "7453813301543647561"
+      "templateHash": "17136766538504551376"
     }
   },
   "parameters": {
@@ -71,6 +71,13 @@
       "defaultValue": "",
       "metadata": {
         "description": "Optional Entra object ID for a human Key Vault administrator. Leave empty to skip this role assignment."
+      }
+    },
+    "sreAgentIdentityName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Name of the managed identity created by the SRE portal (e.g. sre-demo-lklrj5pexwphm). Leave empty to skip the CanNotDelete lock."
       }
     },
     "hubRgName": {
@@ -38443,7 +38450,7 @@
             "value": "[parameters('enableVmInsightsPerfDcr')]"
           },
           "sreAgentIdentityName": {
-            "value": "[format('sre-demo-{0}', uniqueString(parameters('monitorRgName')))]"
+            "value": "[parameters('sreAgentIdentityName')]"
           }
         },
         "template": {

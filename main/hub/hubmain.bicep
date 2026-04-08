@@ -17,6 +17,9 @@ param accessKey string
 param sshPublicKey string //The SSH public key content injected securely from main.bicep or pipeline
 @description('Optional Entra object ID for a human Key Vault administrator. Leave empty to skip this role assignment.')
 param keyVaultAdminObjectId string = ''
+
+@description('Name of the managed identity created by the SRE portal (e.g. sre-demo-lklrj5pexwphm). Leave empty to skip the CanNotDelete lock.')
+param sreAgentIdentityName string = ''
 targetScope = 'subscription' // Required for resource group deployments
 
 // Hub VNet parameters
@@ -1064,8 +1067,9 @@ module monitorDiag '../../modules/hub/monitor-diag.bicep' = if (deploylogsAnalyt
     vmInsightsDcrName: vmInsightsDcrName
     vmInsightsPerfDcrName: vmInsightsPerfDcrName
     enableVmInsightsPerfDcr: enableVmInsightsPerfDcr
-    // Lock the SRE portal identity so its principalId stays stable across deployments
-    sreAgentIdentityName: 'sre-demo-${uniqueString(monitorRgName)}'
+    // Lock the SRE portal identity so its principalId stays stable across deployments.
+    // Pass sreAgentIdentityName=<actual-name> at deploy time (e.g. sre-demo-lklrj5pexwphm).
+    sreAgentIdentityName: sreAgentIdentityName
   }
   dependsOn: [appInsights, vmDataCollectionRule]
 }
