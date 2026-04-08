@@ -7,8 +7,8 @@ param acrLoginServer string
 param natPublicIP string = ''
 @description('User-Assigned Managed Identity Resource ID')
 param managedIdentityId string
-@description('The image to use for the container')
-param containerImage string = '${acrLoginServer}/xelatech-webapp:latest'
+@description('The image to use for the container. Defaults to public quickstart placeholder until xelatech-webapp:latest is pushed to ACR.')
+param containerImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 @description('Log Analytics workspace resource ID for diagnostics.')
 param logAnalyticsWorkspaceId string = ''
 
