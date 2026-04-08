@@ -3,7 +3,7 @@ param deploySpokeVnet bool = true
 param deployVM bool = true
 param deployStorage bool = true
 param deploySQLVM bool = true
-param deployContainerApp bool = false
+param deployContainerApp bool = true
 
 param accessKey string
 param natPublicIP string = ''
@@ -273,10 +273,10 @@ module sqlVM 'br/public:avm/res/compute/virtual-machine:0.9.0' = if (deploySQLVM
 }
 
 // ── Hub resource lookups (cross-subscription) for container app wiring ──
-// ACR is in hubRG-Security, LAW+ACR identity are in hubRG-Security / hubRG-Monitor
+// ACR registry in hubRG-Acr; ACR identity in hubRG-Security; LAW in hubRG-Monitor
 resource hubAcr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
-  name: 'xelaAcr'
-  scope: resourceGroup(hubVnetSubscriptionId, 'hubRG-Security')
+  name: 'xelaAcr${toLower(take(uniqueString('hubRG-Acr'), 4))}'
+  scope: resourceGroup(hubVnetSubscriptionId, 'hubRG-Acr')
 }
 resource hubAcrIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
   name: 'xelaAcr'

@@ -20,6 +20,7 @@ module containerAppEnv 'br/public:avm/res/app/managed-environment:0.13.1' = {
     name: containerAppEnvName
     location: location
     tags: { SecurityControl: 'Ignore' }
+    zoneRedundant: false
     // mTLS disabled; peerTrafficEncryption is a bool (default true)
     peerAuthentication: {
       mtls: { enabled: false }

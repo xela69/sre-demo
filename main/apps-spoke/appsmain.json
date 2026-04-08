@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "7935319202600668952"
+      "templateHash": "18247913983523232900"
     }
   },
   "parameters": {
@@ -27,7 +27,7 @@
     },
     "deployContainerApp": {
       "type": "bool",
-      "defaultValue": false
+      "defaultValue": true
     },
     "accessKey": {
       "type": "string"
@@ -17186,7 +17186,7 @@
             "value": "[parameters('spokeLocation')]"
           },
           "acrLoginServer": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('hubVnetSubscriptionId'), 'hubRG-Security'), 'Microsoft.ContainerRegistry/registries', 'xelaAcr'), '2023-07-01').loginServer]"
+            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('hubVnetSubscriptionId'), 'hubRG-Acr'), 'Microsoft.ContainerRegistry/registries', format('xelaAcr{0}', toLower(take(uniqueString('hubRG-Acr'), 4)))), '2023-07-01').loginServer]"
           },
           "managedIdentityId": {
             "value": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('hubVnetSubscriptionId'), 'hubRG-Security'), 'Microsoft.ManagedIdentity/userAssignedIdentities', 'xelaAcr')]"

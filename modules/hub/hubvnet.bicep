@@ -178,12 +178,12 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = {
 // Create peering from AppsVnet to hub VNet
 resource appsvnet 'Microsoft.Network/virtualNetworks@2024-07-01' existing = if (Peering) {
   name: 'AppsRG-VNet'
-  scope: resourceGroup('86d55e1e-4ca9-4ddd-85df-2e7633d77534', 'AppsRG')
+  scope: resourceGroup('42021d44-97d2-47a1-8245-a77149dda4c3', 'AppsRG')
 }
 // Create peering from DataVnet to hub VNet
 resource datavnet 'Microsoft.Network/virtualNetworks@2024-07-01' existing = if (Peering) {
   name: 'DataRG-VNet'
-  scope: resourceGroup('8cbc59b1-7d9e-4cf1-8851-58fffe68fb79', 'DataRG')
+  scope: resourceGroup('8de6c6e8-53af-4ded-a480-fd20c6093e78', 'DataRG')
 }
 
 resource hubToAppsPeering 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2024-07-01' = if (Peering) {
