@@ -57,7 +57,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = {
     ]
   }
 }
-// Optional peering to a hub VNet if not deploying in a hub
+// Optional w to a hub VNet if not deploying in a hub
 // This allows spoke VNets to connect to a central hub VNet for shared services or internet
 param Peering bool = true // set false for spoke VNets, true for hub VNet
 param hubVnetName string
