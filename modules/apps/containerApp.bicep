@@ -114,6 +114,7 @@ module containerApp 'br/public:avm/res/app/container-app:0.22.0' = {
           custom: {
             type: 'cpu'
             metadata: {
+              type: 'Utilization'
               value: '75'
             }
           }
@@ -123,6 +124,7 @@ module containerApp 'br/public:avm/res/app/container-app:0.22.0' = {
           custom: {
             type: 'memory'
             metadata: {
+              type: 'Utilization'
               value: '80'
             }
           }
