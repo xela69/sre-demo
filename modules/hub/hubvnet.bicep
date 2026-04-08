@@ -8,7 +8,7 @@ param fwPrivateIP string
 param enableFirewallRouting bool = true
 param logAnalyticsWorkspaceId string = ''
 param enableDiagnostics bool = true
-param Peering bool = false //only enable when you have deployed spokes
+param Peering bool = true //only enable when you have deployed spokes
 // All Azure-side address spaces (hub + spokes) — used in GatewaySubnet RT to force
 // on-prem→Azure traffic through the firewall for symmetric stateful inspection
 param azureAddressSpaces array = [
