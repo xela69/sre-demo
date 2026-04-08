@@ -1,5 +1,18 @@
 # Asymmetric Routing Prevention: Hub-Spoke Inspection Strategy
 
+the hub and spoke topology setup specifically with respect to traffic inspection, are as followed:
+
+East-West Inspection:
+  hubSubsubnets to spokeSubnets -- inspected
+  spokesubnet to spokesubnet -- inspected
+
+Azure to Internet -- inspected
+
+Azure to Onprem: inspected
+  hub subnet or spokes Subnet to onprem prefixes vpn gateway -- Inspected
+  return traffic onprem to azure -- Not Inspected
+
+
 ## Overview
 
 In a hub-spoke topology with Azure Firewall and a VPN Gateway, traffic inspection goals are:
