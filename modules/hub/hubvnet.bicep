@@ -9,7 +9,7 @@ param enableFirewallRouting bool = true
 param logAnalyticsWorkspaceId string = ''
 param enableDiagnostics bool = true
 // Route tables per Spoke region 
-resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
+resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = if (enableFirewallRouting) {
   name: routeTableName
   location: location
   tags: {
@@ -93,7 +93,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = {
             ? {
                 id: firewallSubnetRouteTable.id
               }
-            : !contains(
+            : enableFirewallRouting && !contains(
                   [
                     'GatewaySubnet'
                     'privateEPSubnet'
@@ -105,7 +105,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = {
                   subnetNames[i]
                 )
                 ? {
-                    id: hubRouteTable.id
+                    id: hubRouteTable!.id
                   }
                 : null
           delegations: contains(['dns-inbound', 'dns-outbound'], subnetNames[i])
@@ -163,4 +163,4 @@ output privateEPSubnetIds array = [
     ? resourceId('Microsoft.Network/virtualNetworks/subnets', hubVnetName, name)
     : null
 ]
-output routeTableId string = hubRouteTable.name
+output routeTableId string = hubRouteTable!.name
