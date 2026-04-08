@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "17136766538504551376"
+      "templateHash": "9498615906010268873"
     }
   },
   "parameters": {
@@ -56,6 +56,10 @@
     "deployFirewall": {
       "type": "bool",
       "defaultValue": true
+    },
+    "peerAppsSpoke": {
+      "type": "bool",
+      "defaultValue": false
     },
     "natPublicIP": {
       "type": "string"
@@ -320,7 +324,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "4087919660786844122"
+              "templateHash": "10909365151866243055"
             }
           },
           "parameters": {
@@ -357,15 +361,10 @@
               "type": "bool",
               "defaultValue": true
             },
-            "Peering": {
-              "type": "bool",
-              "defaultValue": false
-            },
             "azureAddressSpaces": {
               "type": "array",
               "defaultValue": [
                 "10.50.0.0/20",
-                "10.51.0.0/20",
                 "10.52.0.0/20",
                 "10.53.0.0/20"
               ]
@@ -489,42 +488,6 @@
               ]
             },
             {
-              "condition": "[parameters('Peering')]",
-              "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
-              "apiVersion": "2024-07-01",
-              "name": "[format('{0}/{1}', parameters('hubVnetName'), 'hub-to-Apps-VNet-peering')]",
-              "properties": {
-                "remoteVirtualNetwork": {
-                  "id": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', '86d55e1e-4ca9-4ddd-85df-2e7633d77534', 'AppsRG'), 'Microsoft.Network/virtualNetworks', 'AppsRG-VNet')]"
-                },
-                "allowVirtualNetworkAccess": true,
-                "allowForwardedTraffic": true,
-                "allowGatewayTransit": true,
-                "useRemoteGateways": false
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Network/virtualNetworks', parameters('hubVnetName'))]"
-              ]
-            },
-            {
-              "condition": "[parameters('Peering')]",
-              "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
-              "apiVersion": "2024-07-01",
-              "name": "[format('{0}/{1}', parameters('hubVnetName'), 'hub-to-Data-VNet-peering')]",
-              "properties": {
-                "remoteVirtualNetwork": {
-                  "id": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', '8cbc59b1-7d9e-4cf1-8851-58fffe68fb79', 'DataRG'), 'Microsoft.Network/virtualNetworks', 'DataRG-VNet')]"
-                },
-                "allowVirtualNetworkAccess": true,
-                "allowForwardedTraffic": true,
-                "allowGatewayTransit": true,
-                "useRemoteGateways": false
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.Network/virtualNetworks', parameters('hubVnetName'))]"
-              ]
-            },
-            {
               "condition": "[and(parameters('enableDiagnostics'), not(empty(parameters('logAnalyticsWorkspaceId'))))]",
               "type": "Microsoft.Insights/diagnosticSettings",
               "apiVersion": "2021-05-01-preview",
@@ -578,6 +541,92 @@
       },
       "dependsOn": [
         "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('monitorRgName')), 'Microsoft.Resources/deployments', 'logsModule')]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('hubRgName'))]"
+      ]
+    },
+    {
+      "condition": "[and(parameters('deployHubVnet'), parameters('peerAppsSpoke'))]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "hubToAppsPeeringModule",
+      "resourceGroup": "[parameters('hubRgName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "hubVnetName": {
+            "value": "[parameters('hubVnetName')]"
+          },
+          "spokeVnetName": {
+            "value": "AppsRG-VNet"
+          },
+          "spokeSubId": {
+            "value": "42021d44-97d2-47a1-8245-a77149dda4c3"
+          },
+          "spokeRgName": {
+            "value": "AppsRG"
+          },
+          "allowGatewayTransit": {
+            "value": true
+          },
+          "useRemoteGateways": {
+            "value": false
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "16746486826881557865"
+            }
+          },
+          "parameters": {
+            "hubVnetName": {
+              "type": "string"
+            },
+            "spokeVnetName": {
+              "type": "string"
+            },
+            "spokeSubId": {
+              "type": "string"
+            },
+            "spokeRgName": {
+              "type": "string"
+            },
+            "allowGatewayTransit": {
+              "type": "bool",
+              "defaultValue": true
+            },
+            "useRemoteGateways": {
+              "type": "bool",
+              "defaultValue": false
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+              "apiVersion": "2024-07-01",
+              "name": "[format('{0}/{1}', parameters('hubVnetName'), format('hub-to-{0}-peering', parameters('spokeVnetName')))]",
+              "properties": {
+                "remoteVirtualNetwork": {
+                  "id": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('spokeSubId'), parameters('spokeRgName')), 'Microsoft.Network/virtualNetworks', parameters('spokeVnetName'))]"
+                },
+                "allowVirtualNetworkAccess": true,
+                "allowForwardedTraffic": true,
+                "allowGatewayTransit": "[parameters('allowGatewayTransit')]",
+                "useRemoteGateways": "[parameters('useRemoteGateways')]"
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('hubRgName')), 'Microsoft.Resources/deployments', 'hubVnetModule')]",
         "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('hubRgName'))]"
       ]
     },

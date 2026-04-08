@@ -8,13 +8,11 @@ param fwPrivateIP string
 param enableFirewallRouting bool = true
 param logAnalyticsWorkspaceId string = ''
 param enableDiagnostics bool = true
-param Peering bool = true //only enable when you have deployed spokes
 // All Azure-side address spaces (hub + spokes) — used in GatewaySubnet RT to force
 // on-prem→Azure traffic through the firewall for symmetric stateful inspection
 param azureAddressSpaces array = [
   '10.50.0.0/20' // hub
-  '10.51.0.0/20' // apps-spoke
-  '10.52.0.0/20' // data-spoke
+  '10.52.0.0/20' // apps-spoke (centralus)
   '10.53.0.0/20' // dc-spoke
 ]
 
@@ -174,45 +172,6 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = {
     ]
   }
 }
-
-// Create peering from AppsVnet to hub VNet
-resource appsvnet 'Microsoft.Network/virtualNetworks@2024-07-01' existing = if (Peering) {
-  name: 'AppsRG-VNet'
-  scope: resourceGroup('42021d44-97d2-47a1-8245-a77149dda4c3', 'AppsRG')
-}
-
-resource hubToAppsPeering 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2024-07-01' = if (Peering) {
-  name: 'hub-to-Apps-VNet-peering'
-  parent: vnet
-  properties: {
-    remoteVirtualNetwork: {
-      id: appsvnet.id
-    }
-    allowVirtualNetworkAccess: true
-    allowForwardedTraffic: true
-    allowGatewayTransit: true // Enable gateway transit for VPNGW
-    useRemoteGateways: false
-  }
-}
-/* Create peering from DataVnet to hub VNet
-resource datavnet 'Microsoft.Network/virtualNetworks@2024-07-01' existing = if (Peering) {
-  name: 'DataRG-VNet'
-  scope: resourceGroup('8de6c6e8-53af-4ded-a480-fd20c6093e78', 'DataRG')
-}
-
-resource hubToDataPeering 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2024-07-01' = if (Peering) {
-  name: 'hub-to-Data-VNet-peering'
-  parent: vnet
-  properties: {
-    remoteVirtualNetwork: {
-      id: datavnet.id
-    }
-    allowVirtualNetworkAccess: true
-    allowForwardedTraffic: true
-    allowGatewayTransit: true // Enable gateway transit for VPNGW
-    useRemoteGateways: false
-  }
-}*/
 
 resource vnetDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (enableDiagnostics && !empty(logAnalyticsWorkspaceId)) {
   name: 'diag-${vnet.name}'

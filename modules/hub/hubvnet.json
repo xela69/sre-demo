@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "7269450132659373050"
+      "templateHash": "10909365151866243055"
     }
   },
   "parameters": {
@@ -27,9 +27,6 @@
     "routeTableName": {
       "type": "string"
     },
-    "vpnGwRouteTableName": {
-      "type": "string"
-    },
     "fwPrivateIP": {
       "type": "string"
     },
@@ -45,9 +42,13 @@
       "type": "bool",
       "defaultValue": true
     },
-    "Peering": {
-      "type": "bool",
-      "defaultValue": false
+    "azureAddressSpaces": {
+      "type": "array",
+      "defaultValue": [
+        "10.50.0.0/20",
+        "10.52.0.0/20",
+        "10.53.0.0/20"
+      ]
     }
   },
   "resources": [
@@ -60,27 +61,68 @@
         "Service": "Network",
         "CostCenter": "Infrastructure",
         "Environment": "Production",
-        "SecurityControl": "Ignore"
+        "SecurityControl": "Ignore",
+        "CostControl": "Ignore"
       },
       "properties": {
-        "disableBgpRoutePropagation": false,
-        "routes": "[if(parameters('enableFirewallRouting'), createArray(createObject('name', format('{0}-to-onprem-fortiwifi', parameters('routeTableName')), 'properties', createObject('addressPrefix', '10.2.1.0/24', 'nextHopType', 'VirtualNetworkGateway')), createObject('name', format('{0}-to-onprem-hq', parameters('routeTableName')), 'properties', createObject('addressPrefix', '10.6.1.0/24', 'nextHopType', 'VirtualNetworkGateway')), createObject('name', format('{0}-to-onprem-dc1', parameters('routeTableName')), 'properties', createObject('addressPrefix', '172.16.110.0/24', 'nextHopType', 'VirtualNetworkGateway')), createObject('name', format('{0}-to-onprem-dc2', parameters('routeTableName')), 'properties', createObject('addressPrefix', '172.17.111.0/24', 'nextHopType', 'VirtualNetworkGateway')), createObject('name', format('{0}-to-hubAzFirewall', parameters('routeTableName')), 'properties', createObject('addressPrefix', '0.0.0.0/0', 'nextHopType', 'VirtualAppliance', 'nextHopIpAddress', parameters('fwPrivateIP')))), createArray())]"
+        "disableBgpRoutePropagation": true,
+        "routes": "[if(parameters('enableFirewallRouting'), createArray(createObject('name', format('{0}-to-hubAzFirewall', parameters('routeTableName')), 'properties', createObject('addressPrefix', '0.0.0.0/0', 'nextHopType', 'VirtualAppliance', 'nextHopIpAddress', parameters('fwPrivateIP')))), createArray())]"
       }
     },
     {
+      "condition": "[parameters('enableFirewallRouting')]",
       "type": "Microsoft.Network/routeTables",
       "apiVersion": "2024-07-01",
-      "name": "[parameters('vpnGwRouteTableName')]",
+      "name": "[format('{0}-gw', parameters('routeTableName'))]",
       "location": "[parameters('location')]",
       "tags": {
         "Service": "Network",
         "CostCenter": "Infrastructure",
         "Environment": "Production",
-        "SecurityControl": "Ignore"
+        "SecurityControl": "Ignore",
+        "CostControl": "Ignore"
+      },
+      "properties": {
+        "copy": [
+          {
+            "name": "routes",
+            "count": "[length(parameters('azureAddressSpaces'))]",
+            "input": {
+              "name": "[format('gw-to-fw-azure-{0}', copyIndex('routes'))]",
+              "properties": {
+                "addressPrefix": "[parameters('azureAddressSpaces')[copyIndex('routes')]]",
+                "nextHopType": "VirtualAppliance",
+                "nextHopIpAddress": "[parameters('fwPrivateIP')]"
+              }
+            }
+          }
+        ],
+        "disableBgpRoutePropagation": false
+      }
+    },
+    {
+      "type": "Microsoft.Network/routeTables",
+      "apiVersion": "2024-07-01",
+      "name": "[format('{0}-fw', parameters('routeTableName'))]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "Service": "Network",
+        "CostCenter": "Infrastructure",
+        "Environment": "Production",
+        "SecurityControl": "Ignore",
+        "CostControl": "Ignore"
       },
       "properties": {
         "disableBgpRoutePropagation": false,
-        "routes": "[if(parameters('enableFirewallRouting'), createArray(createObject('name', format('{0}-to-hubVpnGateway', parameters('vpnGwRouteTableName')), 'properties', createObject('addressPrefix', '0.0.0.0/0', 'nextHopType', 'VirtualAppliance', 'nextHopIpAddress', parameters('fwPrivateIP')))), createArray())]"
+        "routes": [
+          {
+            "name": "fw-subnet-to-internet",
+            "properties": {
+              "addressPrefix": "0.0.0.0/0",
+              "nextHopType": "Internet"
+            }
+          }
+        ]
       }
     },
     {
@@ -92,7 +134,8 @@
         "Service": "Network",
         "CostCenter": "Infrastructure",
         "Environment": "Production",
-        "SecurityControl": "Ignore"
+        "SecurityControl": "Ignore",
+        "CostControl": "Ignore"
       },
       "properties": {
         "copy": [
@@ -106,7 +149,7 @@
                   "[parameters('subnetPrefixes')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]]]"
                 ],
                 "privateEndpointNetworkPolicies": "[if(equals(parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]], 'privateEPSubnet'), 'Disabled', null())]",
-                "routeTable": "[if(not(contains(createArray('AzureFirewallSubnet', 'GatewaySubnet', 'privateEPSubnet', 'AzureBastionSubnet', 'appGatewaySubnet', 'dns-inbound', 'dns-outbound'), parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]])), createObject('id', resourceId('Microsoft.Network/routeTables', parameters('routeTableName'))), null())]",
+                "routeTable": "[if(equals(parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]], 'AzureFirewallSubnet'), createObject('id', resourceId('Microsoft.Network/routeTables', format('{0}-fw', parameters('routeTableName')))), if(and(equals(parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]], 'GatewaySubnet'), parameters('enableFirewallRouting')), createObject('id', resourceId('Microsoft.Network/routeTables', format('{0}-gw', parameters('routeTableName')))), if(not(contains(createArray('GatewaySubnet', 'privateEPSubnet', 'AzureBastionSubnet', 'appGatewaySubnet', 'dns-inbound', 'dns-outbound'), parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]])), createObject('id', resourceId('Microsoft.Network/routeTables', parameters('routeTableName'))), null())))]",
                 "delegations": "[if(contains(createArray('dns-inbound', 'dns-outbound'), parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]]), createArray(createObject('name', format('dnsDelegation-{0}', parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]]), 'properties', createObject('serviceName', 'Microsoft.Network/dnsResolvers'))), if(contains(createArray('containerAppSubnet'), parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]]), createArray(createObject('name', format('containerAppsDelegation-{0}', parameters('subnetNames')[range(0, length(parameters('subnetNames')))[copyIndex('subnets')]]), 'properties', createObject('serviceName', 'Microsoft.App/containerApps'))), null()))]"
               }
             }
@@ -120,43 +163,9 @@
         "dhcpOptions": "[if(parameters('enableFirewallRouting'), createObject('dnsServers', createArray(parameters('fwPrivateIP'))), null())]"
       },
       "dependsOn": [
+        "[resourceId('Microsoft.Network/routeTables', format('{0}-fw', parameters('routeTableName')))]",
+        "[resourceId('Microsoft.Network/routeTables', format('{0}-gw', parameters('routeTableName')))]",
         "[resourceId('Microsoft.Network/routeTables', parameters('routeTableName'))]"
-      ]
-    },
-    {
-      "condition": "[parameters('Peering')]",
-      "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
-      "apiVersion": "2024-07-01",
-      "name": "[format('{0}/{1}', parameters('hubVnetName'), 'hub-to-Apps-VNet-peering')]",
-      "properties": {
-        "remoteVirtualNetwork": {
-          "id": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', '86d55e1e-4ca9-4ddd-85df-2e7633d77534', 'AppsRG'), 'Microsoft.Network/virtualNetworks', 'AppsRG-VNet')]"
-        },
-        "allowVirtualNetworkAccess": true,
-        "allowForwardedTraffic": true,
-        "allowGatewayTransit": true,
-        "useRemoteGateways": false
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Network/virtualNetworks', parameters('hubVnetName'))]"
-      ]
-    },
-    {
-      "condition": "[parameters('Peering')]",
-      "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
-      "apiVersion": "2024-07-01",
-      "name": "[format('{0}/{1}', parameters('hubVnetName'), 'hub-to-Data-VNet-peering')]",
-      "properties": {
-        "remoteVirtualNetwork": {
-          "id": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', '8cbc59b1-7d9e-4cf1-8851-58fffe68fb79', 'DataRG'), 'Microsoft.Network/virtualNetworks', 'DataRG-VNet')]"
-        },
-        "allowVirtualNetworkAccess": true,
-        "allowForwardedTraffic": true,
-        "allowGatewayTransit": true,
-        "useRemoteGateways": false
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Network/virtualNetworks', parameters('hubVnetName'))]"
       ]
     },
     {

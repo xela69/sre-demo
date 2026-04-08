@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.42.1.51946",
+      "templateHash": "16746486826881557865"
+    }
+  },
+  "parameters": {
+    "hubVnetName": {
+      "type": "string"
+    },
+    "spokeVnetName": {
+      "type": "string"
+    },
+    "spokeSubId": {
+      "type": "string"
+    },
+    "spokeRgName": {
+      "type": "string"
+    },
+    "allowGatewayTransit": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "useRemoteGateways": {
+      "type": "bool",
+      "defaultValue": false
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+      "apiVersion": "2024-07-01",
+      "name": "[format('{0}/{1}', parameters('hubVnetName'), format('hub-to-{0}-peering', parameters('spokeVnetName')))]",
+      "properties": {
+        "remoteVirtualNetwork": {
+          "id": "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', parameters('spokeSubId'), parameters('spokeRgName')), 'Microsoft.Network/virtualNetworks', parameters('spokeVnetName'))]"
+        },
+        "allowVirtualNetworkAccess": true,
+        "allowForwardedTraffic": true,
+        "allowGatewayTransit": "[parameters('allowGatewayTransit')]",
+        "useRemoteGateways": "[parameters('useRemoteGateways')]"
+      }
+    }
+  ]
+}

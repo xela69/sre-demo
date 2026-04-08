@@ -9,8 +9,12 @@ param deployStorage bool = true
 param deployVM bool = true // Toggle to deploy Hub VM
 param enableVmInsightsPerfDcr bool = true // Optional: deploy a perf-focused DCR for VM Insights detailed metrics
 param deployBastion bool = false // Toggle to deploy Bastion Host
-param deployVpnGw bool = false // Toggle to deploy VPN Gateway
-param deployFirewall bool = false // Toggle to deploy Azure Firewall
+param deployVpnGw bool = true // Toggle to deploy VPN Gateway
+param deployFirewall bool = true // Toggle to deploy Azure Firewall
+// ── Spoke peering toggles — enable once spoke VNets are deployed ──
+param peerAppsSpoke bool = false // apps spoke (42021d44 / AppsRG)
+// param peerDcSpoke   bool = false  // dc spoke   — uncomment when ready
+// param peerDataSpoke bool = false  // data spoke — uncomment when ready
 
 param natPublicIP string //injected securely from main.bicep for NAT testing
 param accessKey string
@@ -82,6 +86,24 @@ module hubVnet '../../modules/hub/hubvnet.bicep' = if (deployHubVnet) {
     enableDiagnostics: deploylogsAnalytics
   }
 }
+
+// ── VNet Peering (separate module so RBAC failures don't roll back VNet/RT changes) ──
+// Deploy hub first without peering (peerAppsSpoke=false), then re-run with =true once spokes exist.
+module hubToAppsPeering '../../modules/hub/vnet-peering.bicep' = if (deployHubVnet && peerAppsSpoke) {
+  name: 'hubToAppsPeeringModule'
+  scope: resourceGroup(networkRGroup.name)
+  params: {
+    hubVnetName: hubVnetName
+    spokeVnetName: 'AppsRG-VNet'
+    spokeSubId: '42021d44-97d2-47a1-8245-a77149dda4c3'
+    spokeRgName: 'AppsRG'
+    allowGatewayTransit: true
+    useRemoteGateways: false
+  }
+  dependsOn: [hubVnet]
+}
+// module hubToDcPeering '../../modules/hub/vnet-peering.bicep' = if (deployHubVnet && peerDcSpoke) { ... }
+// module hubToDataPeering '../../modules/hub/vnet-peering.bicep' = if (deployHubVnet && peerDataSpoke) { ... }
 
 // =============== RBAC Role Assignments for VPNGW, WAF, KeyVault, and AppService====================
 resource securityRGroup 'Microsoft.Resources/resourceGroups@2024-03-01' = if (deploySecurity) {
@@ -1096,5 +1118,3 @@ module vmDiag '../../modules/hub/vm-diag.bicep' = if (deployVM) {
   }
   dependsOn: [hubVM, linuxVM]
 }
-
-
