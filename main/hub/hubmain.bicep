@@ -12,7 +12,7 @@ param deployBastion bool = false // Toggle to deploy Bastion Host
 param deployVpnGw bool = true // Toggle to deploy VPN Gateway
 param deployFirewall bool = true // Toggle to deploy Azure Firewall
 // ── Spoke peering toggles — enable once spoke VNets are deployed ──
-param peerAppsSpoke bool = false // apps spoke (42021d44 / AppsRG)
+param peerAppsSpoke bool = true // apps spoke (42021d44 / AppsRG)
 // param peerDcSpoke   bool = false  // dc spoke   — uncomment when ready
 // param peerDataSpoke bool = false  // data spoke — uncomment when ready
 
