@@ -1,4 +1,6 @@
-ssh -i ~/.ssh/id_rsa -p 2221 vmuser@130.131.58.206
+# Connect to the remote VM
+
+ssh vmuser@1x.x.x.x
 # regenerate to remove old ssh keys
 ssh-keygen -R 10.50.0.5
 sudo apt install python3
