@@ -35,7 +35,7 @@ Spoke VM (10.51.0.4) → On-prem (10.2.1.5)
 
 3. Firewall subnet route table:
    • 0.0.0.0/0 → Internet                       ← Azure requirement for AzureFirewallSubnet
-   • on-prem routes injected via BGP propagation from VPN GW (disableBgpRoutePropagation: false)
+   • on-prem routes injected via gateway route propagation from VPN GW (LNG prefixes, disableBgpRoutePropagation: false)
 
 4. VPN Gateway → on-prem tunnel → FortiGate receives packet
 
@@ -199,7 +199,7 @@ Spoke peering → Hub:   allowGatewayTransit: false, useRemoteGateways: true
 | `AllowAzureToOnPrem` | trustedAzureIpGroup | trustedOnPremIpGroup | TCP/UDP/ICMP | ALLOW |
 | `AllowOnPremToAzure` | trustedOnPremIpGroup | trustedAzureIpGroup | TCP/UDP/ICMP | ALLOW |
 
-**On-prem IP Group** (`ipg-trusted-onprem`): `10.2.1.0/24`, `10.6.1.0/24`, `172.16.110.0/24`, `172.17.111.0/24`
+**On-prem IP Group** (`ipg-trusted-onprem`): `10.2.1.0/24`, `10.6.1.0/24`, `172.16.110.0/24`, `172.17.111.0/24`, `192.168.0.0/24`
 
 **`AllowOnPremToAzure`** is actively used for all on-prem → Azure traffic. The GatewaySubnet route table (`hubRouteTable-gw`) forces on-prem-initiated packets through the firewall, where this rule evaluates and allows matching traffic. This ensures the firewall creates session state for the connection, enabling symmetric stateful inspection for the entire session lifecycle.
 
@@ -243,7 +243,7 @@ Audit performed against subscriptions `ebc6a927-*` (hub) and `42021d44-*` (apps-
 |-----------|------|--------|
 | Azure Firewall | `xelaAzFirewall` | Deployed, Premium, private IP `10.50.4.4` |
 | VPN Gateway | `xelavpngvnso` | Deployed, VpnGw1AZ, RouteBased, BGP off (static routes) |
-| VPN Connection | `XelaVPNConnection` | Connected, IKEv2, DPD 45s, 0 bytes (routing fix pending) |
+| VPN Connection | `XelaVPNConnection` | Connected, IKEv2, DPD 45s, traffic confirmed 2026-04-08 |
 | Local Network Gateway | `xelalocalgw` | Peer `97.94.106.46`, prefixes: `10.6.1.0/24`, `172.16.110.0/24`, `172.17.111.0/24`, `10.2.1.0/24`, `192.168.0.0/24` |
 | Hub VNet | `hubRG-VNet` | `10.50.0.0/20` |
 | Apps Spoke VNet | `AppsRG-VNet` | `10.52.0.0/20` |

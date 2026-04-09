@@ -13,8 +13,8 @@ param enableDiagnostics bool = true
 param azureAddressSpaces array = [
   '10.50.0.0/20' // hub
   '10.52.0.0/20' // apps-spoke
-  // '10.51.0.0/20' // dc-spoke   — uncomment when deployed
-  // '10.53.0.0/20' // data-spoke — uncomment when deployed
+  // '10.51.0.0/20' // data-spoke   — uncomment when deployed
+  // '10.53.0.0/20' // dc-spoke — uncomment when deployed
 ]
 // Route tables per Spoke region 
 resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = if (enableFirewallRouting) {
