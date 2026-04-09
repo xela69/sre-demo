@@ -71,7 +71,9 @@ resource gatewaySubnetRouteTable 'Microsoft.Network/routeTables@2024-07-01' = if
   }
 }
 
-// Firewall subnet route table — Azure requires 0.0.0.0/0 → Internet on AzureFirewallSubnet
+// Firewall subnet route table — Azure requires 0.0.0.0/0 → Internet on AzureFirewallSubnet.
+// On-prem prefixes are injected automatically via gateway route propagation (disableBgpRoutePropagation: false).
+// This works even when VPN GW BGP is disabled — gateway propagation uses LNG address spaces, not BGP.
 resource firewallSubnetRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
   name: '${routeTableName}-fw'
   location: location
@@ -83,16 +85,11 @@ resource firewallSubnetRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
     CostControl: 'Ignore'
   }
   properties: {
-    disableBgpRoutePropagation: false // BGP propagation enabled: VPN GW injects on-prem routes into firewall subnet effective routes
+    disableBgpRoutePropagation: false // VPN GW propagates on-prem (LNG) prefixes into this subnet automatically
     routes: [
-      // Azure mandate: AzureFirewallSubnet must have 0.0.0.0/0 → Internet
-      // On-prem routes are handled via BGP propagation from VPN GW (not custom UDRs — unsupported on this subnet)
       {
         name: 'fw-subnet-to-internet'
-        properties: {
-          addressPrefix: '0.0.0.0/0'
-          nextHopType: 'Internet'
-        }
+        properties: { addressPrefix: '0.0.0.0/0', nextHopType: 'Internet' }
       }
     ]
   }

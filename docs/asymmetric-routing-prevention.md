@@ -129,16 +129,16 @@ Applied to: `AzureFirewallSubnet` only
 
 ```bicep
 properties: {
-  disableBgpRoutePropagation: false  // BGP enabled: VPN GW propagates on-prem routes into firewall's effective routes
+  disableBgpRoutePropagation: false  // VPN GW propagates on-prem (LNG) prefixes into this subnet automatically
   routes: [
-    // Azure mandate: only 0.0.0.0/0 → Internet is supported as a custom UDR on AzureFirewallSubnet
-    // On-prem routes reach the firewall via BGP propagation from VPN GW — NOT via custom UDRs
+    // Only custom UDR required on AzureFirewallSubnet:
     { name: 'fw-subnet-to-internet', addressPrefix: '0.0.0.0/0', nextHopType: 'Internet' }
+    // On-prem prefixes appear in effective routes as gateway-propagated — no custom UDRs needed
   ]
 }
 ```
 
-> **Why no on-prem UDRs here**: Azure Firewall subnet does **not** support custom UDRs for on-prem prefixes. Adding them puts the firewall into a faulted state (`FirewallPolicyUpdateFailed`). Instead, `disableBgpRoutePropagation: false` lets the VPN GW automatically inject on-prem routes into the firewall subnet's effective routes via BGP. The firewall uses those BGP-propagated routes to forward inspected traffic to the VPN GW.
+> **Gateway route propagation vs VPN BGP**: `disableBgpRoutePropagation: false` enables *gateway route propagation* — Azure automatically injects the Local Network Gateway (LNG) address prefixes into this subnet's effective routes via the VPN GW. This is **separate** from VPN BGP (the protocol for dynamic routing with on-prem peers). Gateway propagation uses the static LNG prefix list and works regardless of whether VPN BGP is enabled. Result: effective routes show LNG prefixes as `Default/Active → VirtualNetworkGateway` without any custom UDRs.
 
 ### GatewaySubnet Route Table (`hubRouteTable-gw`)
 Applied to: `GatewaySubnet` only
@@ -255,8 +255,8 @@ Audit performed against subscriptions `ebc6a927-*` (hub) and `42021d44-*` (apps-
 | Route Table | Routes | Subnets | Status |
 |-------------|--------|---------|--------|
 | `hubRouteTable` | `0.0.0.0/0 → 10.50.4.4` | `vmSubnet`, `appSubnet` | ✅ Manually remediated 2026-04-08 |
-| `hubRouteTable-fw` | `0.0.0.0/0 → Internet` | `AzureFirewallSubnet` | ✅ Correct |
-| `hubRouteTable-gw` | Azure address spaces → `10.50.4.4` | `GatewaySubnet` | ⚠️ Pending Bicep fix + redeploy |
+| `hubRouteTable-fw` | `0.0.0.0/0 → Internet` only; on-prem routes via gateway propagation | `AzureFirewallSubnet` | ✅ Confirmed correct 2026-04-08 |
+| `hubRouteTable-gw` | Azure address spaces → `10.50.4.4` | `GatewaySubnet` | ✅ Manually created 2026-04-08 |
 | `appsRouteTable` | `0.0.0.0/0 → 10.50.4.4` | `vmSubnet`, `appSubnet` | ✅ Correct |
 
 ### Peering Status
@@ -296,12 +296,16 @@ az network nic show-effective-route-table \
   --output table
 ```
 
-### 4. Check firewall subnet effective routes (expect BGP-propagated on-prem routes + 0.0.0.0/0 → Internet)
+### 4. Check firewall subnet effective routes (expect gateway-propagated on-prem routes + custom 0.0.0.0/0 → Internet)
 ```bash
-az network nic show-effective-route-table \
-  --resource-group hubRG \
-  --name <firewall-mgmt-nic> \
-  --output table
+# Azure Firewall doesn't expose a standard NIC for effective-route-table queries.
+# Verify via route table config and confirmed connectivity instead:
+az network route-table show \
+  --subscription ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9 \
+  -g hubRG -n hubRouteTable-fw \
+  --query "{DisableBGP:disableBgpRoutePropagation, Routes:routes[].{Prefix:addressPrefix,NextHop:nextHopType}}" -o json
+# Expected: DisableBGP: false, Routes contains only 0.0.0.0/0->Internet
+# On-prem prefixes appear as Default/Active in effective routes via gateway propagation (not listed in custom routes)
 ```
 
 ### 5. End-to-end ping test (from FortiGate — should succeed and show in firewall logs)
