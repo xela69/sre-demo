@@ -1,0 +1,103 @@
+# Login to Azure and deploy the bicep infrastructure
+az login --use-device-code
+az account list --output table
+az account list --query "[].{Name:name, ID:id}" -o table
+az account set --subscription 155abeb8-c0a9-4927-a455-986a03026829
+az account list --all --output table
+az account show --query 'name' -o table
+az account show --query "{Name:name, ID:id}" -o table
+az account show --query "{ID:id, Name:name}" -o table
+az account clear
+# List management groups
+az account management-group list --output table
+
+UPN="arnoldp@xelatech.net"
+az role assignment list --assignee $UPN --all -o table
+az role assignment list --assignee arnoldp@xelatech.net --all -o table
+hubSubId=$(az account show --query id -o tsv);echo $hubSubId
+USER_ID=$(az ad user show --id "$UPN" --query id -o tsv)
+echo "Arnold, USER_ID=$USER_ID"
+
+echo "=== Directory Roles (Entra) ==="
+az rest --method GET --url "https://graph.microsoft.com/v1.0/users/$USER_ID/memberOf/microsoft.graph.directoryRole?\$select=displayName" --query "value[].displayName" -o tsv
+
+echo "=== Azure RBAC Roles (Subscription + inherited) ==="
+az role assignment list --assignee-object-id "$USER_ID" --include-inherited --all --query "[].{role:roleDefinitionName, scope:scope}" -o table
+
+# MCAPS Subscriptions
+hubSubId="ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9"
+appsSubId="42021d44-97d2-47a1-8245-a77149dda4c3"
+dataSubId="8de6c6e8-53af-4ded-a480-fd20c6093e78"
+
+# generate a random password
+accessKey=$(python ./scripts/pwdgen.py); echo $accessKey > ./docs/pwd.txt
+
+az ad sp create --id e34ce811-7064-412e-986d-b25819741c35
+az role assignment create --assignee e34ce811-7064-412e-986d-b25819741c35 --role "Contributor" --scope /subscriptions/$hubSubId
+
+./scripts/azcli/deploy_hub_fwvpn_reconcile.sh
+===================================================================
+az account set --subscription $hubSubId; echo $hubSubId
+az account show --query "{Name:name, ID:id}" -o table
+
+# Infra/hub
+echo $hubSubId
+az account set --subscription $hubSubId
+
+az deployment sub create --subscription $hubSubId -l westus2 --template-file ./main/hub/hubmain.bicep --parameters natPublicIP=$(curl -4 -s ifconfig.me) accessKey=$(cat ./docs/pwd.txt) sshPublicKey="$(cat ~/.ssh/id_ed25519.pub)" 
+--what-if
+
+# data-spoke — only labPassword required
+echo $dataSubId
+az account set --subscription $dataSubId
+az account show --query "{Name:name, ID:id}" -o table
+
+az deployment sub create --subscription $dataSubId -l westus3 --template-file ./main/data-spoke/datamain.bicep --parameters labPassword='demo!pass123' --what-if
+
+# 1. Deploy Apps-spoke — only accessKey required
+echo $appsSubId
+az account set --subscription $appsSubId
+az account show --query "{Name:name, ID:id}" -o table
+
+az deployment sub create --subscription $appsSubId -l centralus --template-file ./main/apps-spoke/appsmain.bicep --parameters accessKey=$(cat ./docs/pwd.txt) natPublicIP=$(curl -4 -s ifconfig.me) 
+--what-if
+
+# check data and schema on AppsSQLVM
+# ── Post-deploy: enable VPN GW + flip spoke peerings to useRemoteGateways=true ──
+# Run AFTER hub is redeployed with deployVpnGw=true
+# --skip-hub   → skip hub redeploy, only patch peerings (hub GW already exists)
+# --dry-run    → preview without making changes
+./scripts/azcli/enable_vpngw_peering.sh
+./scripts/azcli/enable_vpngw_peering.sh --skip-hub
+./scripts/azcli/enable_vpngw_peering.sh --dry-run
+
+# ── Post-deploy: seed LabAppDB on AppsSQLVM (run after apps-spoke deploy) ──
+./scripts/azcli/seed-sqlvm.sh             # full seed (idempotent)
+./scripts/azcli/seed-sqlvm.sh --check     # validate row counts only
+./scripts/azcli/seed-sqlvm.sh --dry-run   # preview without executing
+
+# list all vnets across all subscriptions
+subs=$(az account list --query "[?state=='Enabled'].id" -o tsv);echo $subs
+
+# Preview what would be deleted (auto-discovers all enabled subs)
+./scripts/remove-all.sh --dry-run
+./scripts/remove-all.sh
+
+# 1) Your tenant Private EP (should resolve private)
+nslookup hubstorela7oji.blob.core.windows.net
+
+# 2) Partner tenant SQL — forced public via ruleset
+nslookup sql-uat-abl-hw-cps.database.windows.net
+nslookup sql-prod-abl-hw-cps.database.windows.net
+
+# 3) On-prem name via resolver → on-prem DC
+nslookup host.onprem.xelatech.net
+
+# 4) General Internet via public TLD forwarders
+nslookup example.com
+
+# Private EP via Resolver inbound
+nslookup <yourPE>.privatelink.database.windows.net <ResolverInboundIP>
+
+# Partner public FQDNs forced to public
+nslookup sql-uat-abl-hw-cps.database.windows.net <ResolverInboundIP>
