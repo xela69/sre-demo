@@ -102,8 +102,74 @@ check_deployments() {
     sub_has_active=false
     sub_output=""
 
+    # ── Subscription-scope deployments (az deployment sub create) ──
+    sub_deployments=$(az deployment sub list \
+      --subscription "$sub" \
+      --query "[].{name:name, state:properties.provisioningState, ts:properties.timestamp, duration:properties.duration}" \
+      -o tsv 2>/dev/null || true)
+
+    if [[ -n "$sub_deployments" ]]; then
+      if echo "$sub_deployments" | awk -F$'\t' '{print $2}' | grep -qE '^(Running|Accepted|Failed)$'; then
+        sub_has_active=true
+        sub_output+="\n   ${BOLD}📋 Subscription-scope deployments${NC}\n"
+      fi
+      while IFS=$'\t' read -r name state ts duration; do
+        friendly_dur=""
+        if [[ -n "$duration" && "$duration" != "None" ]]; then
+          local mins=0 secs=0
+          if [[ "$duration" =~ ([0-9]+)M ]]; then mins=${BASH_REMATCH[1]}; fi
+          if [[ "$duration" =~ ([0-9]+(\.[0-9]+)?)S ]]; then secs=${BASH_REMATCH[1]%%.*}; fi
+          friendly_dur="${mins}m ${secs}s"
+        fi
+        case "$state" in
+          Succeeded)
+            succeeded_list+="      ${GREEN}✅ $name${NC}  [sub-scope]  (${friendly_dur:-n/a})"$'\n'
+            ;;
+          Failed)
+            error_msg=$(az deployment sub show \
+              --subscription "$sub" \
+              --name "$name" \
+              --query "properties.error.{code:code, message:message, details:details[0].{code:code, message:message}}" \
+              -o json 2>/dev/null || echo '{}')
+            err_code=$(echo "$error_msg" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('code',''))" 2>/dev/null || echo "")
+            err_detail=$(echo "$error_msg" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+detail = d.get('details', {})
+if detail:
+    msg = detail.get('message', '')
+    try:
+        inner = json.loads(msg)
+        print(inner.get('message', msg)[:200])
+    except:
+        print(msg[:200])
+else:
+    print(d.get('message', 'Unknown error')[:200])
+" 2>/dev/null || echo "Unknown error")
+            sub_output+="      ${RED}❌ $name${NC}  [sub-scope]  (${friendly_dur:-n/a})"$'\n'
+            sub_output+="         ${RED}└─ ${err_code}: ${err_detail}${NC}"$'\n'
+            failed_list+="      ${RED}❌ $name${NC}  [sub-scope]"$'\n'
+            failed_list+="         ${RED}└─ ${err_code}: ${err_detail}${NC}"$'\n'
+            sub_has_active=true
+            ;;
+          Running|Accepted)
+            elapsed_lapse=$(elapsed_from_ts "$ts")
+            sub_output+="      ${YELLOW}🔄 $name${NC}  [sub-scope]  ($state, elapsed: ${elapsed_lapse})"$'\n'
+            running_list+="      ${YELLOW}🔄 $name${NC}  [sub-scope]  ($state, elapsed: ${elapsed_lapse})"$'\n'
+            has_running=true
+            sub_has_active=true
+            ;;
+        esac
+      done <<< "$sub_deployments"
+    fi
+
+    # ── Resource-group-scope deployments ──
     rgs=($(az group list --subscription "$sub" --query "[].name" -o tsv 2>/dev/null | sort -u))
     if [[ ${#rgs[@]} -eq 0 ]]; then
+      if $sub_has_active; then
+        echo -e "\n${BOLD}📡 Subscription: ${CYAN}${subName}${NC} (${sub})"
+        echo -e "$sub_output"
+      fi
       continue
     fi
 
@@ -196,8 +262,6 @@ else:
       echo -e "$sub_output"
     fi
   done
-
-  # ── Summary ──
   echo ""
   echo -e "${BOLD}═══════════════════════════════════════════════════${NC}"
   echo -e "${BOLD}📊 DEPLOYMENT SUMMARY${NC}"

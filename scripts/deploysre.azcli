@@ -59,7 +59,7 @@ echo $appsSubId
 az account set --subscription $appsSubId
 az account show --query "{Name:name, ID:id}" -o table
 
-az deployment sub create --subscription $appsSubId -l centralus --template-file ./main/apps-spoke/appsmain.bicep --parameters accessKey=$(cat ./docs/pwd.txt) natPublicIP=$(curl -4 -s ifconfig.me) 
+az deployment sub create --subscription $appsSubId -l centralus --template-file ./main/apps-spoke/appsmain.bicep --parameters accessKey=$(cat ./docs/pwd.txt) natPublicIP=$(curl -4 -s ifconfig.me) sshPublicKey="$(cat ~/.ssh/id_ed25519.pub)"
 --what-if
 
 # check data and schema on AppsSQLVM

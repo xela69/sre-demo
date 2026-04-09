@@ -9,7 +9,7 @@ param accessKey string
 param sshPublicKey string
 param natPublicIP string = ''
 param deployLinuxVM bool = true
-param enableVmInsightsPerfDcr bool = false
+param enableVmInsightsPerfDcr bool = true
 targetScope = 'subscription' // Required for resource group deployments
 
 param spokeRgName string = 'AppsRG'
