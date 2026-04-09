@@ -6,7 +6,10 @@ param deploySQLVM bool = true
 param deployContainerApp bool = true
 
 param accessKey string
+param sshPublicKey string
 param natPublicIP string = ''
+param deployLinuxVM bool = true
+param enableVmInsightsPerfDcr bool = false
 targetScope = 'subscription' // Required for resource group deployments
 
 param spokeRgName string = 'AppsRG'
@@ -110,9 +113,119 @@ module spokeVM 'br/public:avm/res/compute/virtual-machine:0.9.0' = if (deployVM)
       }
     ]
     managedIdentities: { systemAssigned: true }
+    // ── Boot Diagnostics ──
+    bootDiagnostics: true
+    // ── Azure Monitor Agent (AMA) extension + DCR association ──
+    extensionMonitoringAgentConfig: {
+      enabled: true
+      dataCollectionRuleAssociations: concat(
+        [
+          {
+            name: 'appsVM-vmInsights'
+            dataCollectionRuleResourceId: hubVmInsightsDcr.id
+          }
+        ],
+        enableVmInsightsPerfDcr
+          ? [
+              {
+                name: 'appsVM-vmInsightsPerf'
+                dataCollectionRuleResourceId: hubVmInsightsPerfDcr.id
+              }
+            ]
+          : []
+      )
+    }
+    // ── Dependency Agent for VM Insights Map feature ──
+    extensionDependencyAgentConfig: {
+      enabled: true
+      enableProcessesAndDependencies: true
+    }
     tags: {
       Service: 'Compute'
       CostCenter: 'Infrastructure'
+      Environment: 'Production'
+      Owner: 'Xelatech'
+      SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
+    }
+  }
+  dependsOn: [spokeVnet]
+}
+
+// ── AVM: Apps Spoke Linux VM (Ubuntu 20.04 LTS) ──
+module linuxVM 'br/public:avm/res/compute/virtual-machine:0.9.0' = if (deployVM && deployLinuxVM) {
+  name: 'AppsLinuxVMModule'
+  scope: resourceGroup(spokeSubId, vmRGroup.name)
+  params: {
+    name: 'AppsLinuxVM${take(uniqueString(spokeVmRgName), 4)}'
+    location: spokeLocation
+    osType: 'Linux'
+    vmSize: 'Standard_D2s_v3'
+    zone: 0 // non-zonal deployment — avoids per-zone SKU capacity restrictions
+    encryptionAtHost: false // subscription lacks Microsoft.Compute/EncryptionAtHost feature
+    adminUsername: 'vmuser'
+    disablePasswordAuthentication: true
+    publicKeys: [
+      {
+        keyData: sshPublicKey
+        path: '/home/vmuser/.ssh/authorized_keys'
+      }
+    ]
+    imageReference: {
+      publisher: 'Canonical'
+      offer: '0001-com-ubuntu-server-focal'
+      sku: '20_04-lts-gen2'
+      version: 'latest'
+    }
+    osDisk: {
+      caching: 'ReadWrite'
+      createOption: 'FromImage'
+      diskSizeGB: 30
+      managedDisk: { storageAccountType: 'Standard_LRS' }
+    }
+    nicConfigurations: [
+      {
+        nicSuffix: '-nic'
+        enableAcceleratedNetworking: false
+        ipConfigurations: [
+          {
+            name: 'ipconfig1'
+            subnetResourceId: vmSubnetResourceId
+          }
+        ]
+      }
+    ]
+    managedIdentities: { systemAssigned: true }
+    bootDiagnostics: true
+    bootDiagnosticStorageAccountUri: 'https://${storage!.outputs.name}.blob.${environment().suffixes.storage}/'
+    // ── Azure Monitor Agent (AMA) extension + DCR association ──
+    extensionMonitoringAgentConfig: {
+      enabled: true
+      dataCollectionRuleAssociations: concat(
+        [
+          {
+            name: 'appsLinuxVM-vmInsights'
+            dataCollectionRuleResourceId: hubVmInsightsDcr.id
+          }
+        ],
+        enableVmInsightsPerfDcr
+          ? [
+              {
+                name: 'appsLinuxVM-vmInsightsPerf'
+                dataCollectionRuleResourceId: hubVmInsightsPerfDcr.id
+              }
+            ]
+          : []
+      )
+    }
+    // ── Dependency Agent for VM Insights Map feature (Ubuntu 20.04 supported) ──
+    extensionDependencyAgentConfig: {
+      enabled: true
+      enableProcessesAndDependencies: true
+    }
+    tags: {
+      Service: 'VM'
+      CostCenter: 'Linux'
       Environment: 'Production'
       Owner: 'Xelatech'
       SecurityControl: 'Ignore'
@@ -158,6 +271,14 @@ module storage 'br/public:avm/res/storage/storage-account:0.15.0' = if (deploySt
       bypass: 'AzureServices'
       virtualNetworkRules: []
     }
+    // ── Diagnostic Settings ──
+    diagnosticSettings: [
+      {
+        workspaceResourceId: hubLaw.id
+        logCategoriesAndGroups: [{ categoryGroup: 'allLogs' }]
+        metricCategories: [{ category: 'Transaction' }]
+      }
+    ]
     blobServices: {
       automaticSnapshotPolicyEnabled: true
       changeFeedEnabled: true
@@ -166,12 +287,44 @@ module storage 'br/public:avm/res/storage/storage-account:0.15.0' = if (deploySt
         { name: 'outputs' }
         { name: 'errors' }
       ]
+      diagnosticSettings: [
+        {
+          workspaceResourceId: hubLaw.id
+          logCategoriesAndGroups: [{ categoryGroup: 'allLogs' }]
+          metricCategories: [{ category: 'Transaction' }]
+        }
+      ]
     }
     fileServices: {
       shares: [
         {
           name: 'notesdoc'
           accessTier: 'Hot'
+        }
+      ]
+      diagnosticSettings: [
+        {
+          workspaceResourceId: hubLaw.id
+          logCategoriesAndGroups: [{ categoryGroup: 'allLogs' }]
+          metricCategories: [{ category: 'Transaction' }]
+        }
+      ]
+    }
+    queueServices: {
+      diagnosticSettings: [
+        {
+          workspaceResourceId: hubLaw.id
+          logCategoriesAndGroups: [{ categoryGroup: 'allLogs' }]
+          metricCategories: [{ category: 'Transaction' }]
+        }
+      ]
+    }
+    tableServices: {
+      diagnosticSettings: [
+        {
+          workspaceResourceId: hubLaw.id
+          logCategoriesAndGroups: [{ categoryGroup: 'allLogs' }]
+          metricCategories: [{ category: 'Transaction' }]
         }
       ]
     }
@@ -259,6 +412,33 @@ module sqlVM 'br/public:avm/res/compute/virtual-machine:0.9.0' = if (deploySQLVM
       }
     ]
     managedIdentities: { systemAssigned: true }
+    // ── Boot Diagnostics ──
+    bootDiagnostics: true
+    // ── Azure Monitor Agent (AMA) extension + DCR association ──
+    extensionMonitoringAgentConfig: {
+      enabled: true
+      dataCollectionRuleAssociations: concat(
+        [
+          {
+            name: 'sqlVM-vmInsights'
+            dataCollectionRuleResourceId: hubVmInsightsDcr.id
+          }
+        ],
+        enableVmInsightsPerfDcr
+          ? [
+              {
+                name: 'sqlVM-vmInsightsPerf'
+                dataCollectionRuleResourceId: hubVmInsightsPerfDcr.id
+              }
+            ]
+          : []
+      )
+    }
+    // ── Dependency Agent for VM Insights Map feature ──
+    extensionDependencyAgentConfig: {
+      enabled: true
+      enableProcessesAndDependencies: true
+    }
     tags: {
       Service: 'SQL Server'
       CostCenter: 'Infrastructure'
@@ -284,6 +464,15 @@ resource hubAcrIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-0
 }
 resource hubLaw 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
   name: 'xelaLogs${take(uniqueString('hubRG-Monitor'), 4)}'
+  scope: resourceGroup(hubVnetSubscriptionId, 'hubRG-Monitor')
+}
+// Reference hub VM Insights DCRs for AMA associations (cross-subscription)
+resource hubVmInsightsDcr 'Microsoft.Insights/dataCollectionRules@2023-03-11' existing = {
+  name: 'MSVMI-xelaLogs${take(uniqueString('hubRG-Monitor'), 4)}'
+  scope: resourceGroup(hubVnetSubscriptionId, 'hubRG-Monitor')
+}
+resource hubVmInsightsPerfDcr 'Microsoft.Insights/dataCollectionRules@2023-03-11' existing = {
+  name: 'MSVMI-Perf-xelaLogs${take(uniqueString('hubRG-Monitor'), 4)}'
   scope: resourceGroup(hubVnetSubscriptionId, 'hubRG-Monitor')
 }
 
