@@ -13,11 +13,11 @@ python3 -c 'import sys; print(sys.executable)'
 readlink -f /usr/bin/python3
 # sample output: /usr/bin/python3.12
 # 2) Grant the bind-low-ports capability to that real binary
-sudo setcap 'cap_net_bind_service=+ep' /usr/bin/python3.12
+sudo setcap 'cap_net_bind_service=+ep' /usr/bin/python3.8
 
 # 3) Verify
-getcap /usr/bin/python3.12
-# -> /usr/bin/python3.12 = cap_net_bind_service+ep
+getcap /usr/bin/python3.8
+# -> /usr/bin/python3.8 = cap_net_bind_service+ep
 # -> /usr/bin/python3 = cap_net_bind_service+ep
 # run the python script to start the port simulator
 sudo python3 server.py

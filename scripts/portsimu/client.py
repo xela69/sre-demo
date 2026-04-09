@@ -1,6 +1,7 @@
+#!/usr/bin/env python3
 import socket
 
-TARGET = "10.50.0.5"  # the linux server privateIP
+TARGET = "10.52.0.6"  # the linux server privateIP
 
 TCP_PORTS = [22, 25, 53, 80, 88, 123, 135, 137, 139, 161, 389, 443, 445, 464, 636, 647, 1433, 3268, 3269, 3389, 5671, 8443, 9191, 9192, 9389, 9200, 9300, 9400, 49152, 55000, 61000]
 UDP_PORTS = [53, 123, 161, 5353, 5671, 9200, 9300, 9400, 53000]
