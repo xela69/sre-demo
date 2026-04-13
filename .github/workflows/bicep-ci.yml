@@ -1,12 +1,15 @@
 # CI: Bicep Lint & Validate
 #
-# This workflow runs on pull requests that modify Bicep files or the workflows
-# themselves. It lints and validates all main Bicep entry points, then performs
-# an Azure preflight validation for the hub deployment.
+# Lints and validates all main Bicep entry points, then performs an Azure
+# preflight validation for the hub deployment.
+#
+# This workflow is triggered manually: Actions → "Bicep CI – Lint & Validate"
+# → Run workflow. Run it before merging any changes to main/**, modules/**,
+# bicepconfig.json, or the workflow files themselves.
 #
 # Required repository secrets (Settings → Secrets and variables → Actions):
-#   AZURE_CLIENT_ID      - App registration / managed identity client ID
-#   AZURE_TENANT_ID      - Azure AD tenant ID
+#   AZURE_CLIENT_ID       - App registration / managed identity client ID
+#   AZURE_TENANT_ID       - Azure AD tenant ID
 #   AZURE_SUBSCRIPTION_ID - Target Azure subscription ID
 #
 # OIDC authentication: No client secret is stored. GitHub exchanges a short-lived
@@ -17,14 +20,7 @@
 name: Bicep CI – Lint & Validate
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - 'main/**'
-      - 'modules/**'
-      - 'bicepconfig.json'
-      - '.github/workflows/**'
+  workflow_dispatch:
 
 permissions:
   id-token: write

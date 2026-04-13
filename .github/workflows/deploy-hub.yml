@@ -3,6 +3,9 @@
 # Deploys the hub network (hubmain.bicep) to Azure at subscription scope.
 # Runs validate → what-if → deploy.
 #
+# This workflow is triggered manually: Actions → "CD: Deploy Hub Infrastructure"
+# → Run workflow. Select the target environment and optionally override natPublicIP.
+#
 # Required repository secrets (Settings → Secrets and variables → Actions):
 #   AZURE_CLIENT_ID       - App registration / managed identity client ID
 #   AZURE_TENANT_ID       - Azure AD tenant ID
@@ -15,12 +18,6 @@
 # OIDC authentication: No client secret is stored. GitHub exchanges a short-lived
 # OIDC token for an Azure access token using federated identity credentials
 # configured in oidc.json. The id-token: write permission below is required.
-#
-# Manual run: Actions → "CD: Deploy Hub Infrastructure" → Run workflow.
-#   Select the target environment and optionally override natPublicIP.
-#
-# Automatic trigger: Uncomment the push block below once you are ready for
-# GitOps-style continuous deployment on merges to main.
 
 name: CD – Deploy Hub Infrastructure
 
@@ -34,14 +31,6 @@ on:
       natPublicIP:
         description: 'Override NAT public IP for this run (leave blank to use NAT_PUBLIC_IP secret)'
         required: false
-
-  # Uncomment when ready for automatic deployment on push to main:
-  # push:
-  #   branches:
-  #     - main
-  #   paths:
-  #     - 'main/hub/**'
-  #     - 'modules/hub/**'
 
 permissions:
   id-token: write
