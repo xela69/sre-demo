@@ -13,7 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PS1_FILE="$REPO_ROOT/scripts/sql/setup-labsql.ps1"
 
-APPS_SUB="86d55e1e-4ca9-4ddd-85df-2e7633d77534"
+APPS_SUB="42021d44-97d2-47a1-8245-a77149dda4c3"
 VM_RG="AppsRG-SQL"
 VM_NAME="AppsSQLVM"
 
