@@ -1,0 +1,80 @@
+# CI: Bicep Lint & Validate
+#
+# This workflow runs on pull requests that modify Bicep files or the workflows
+# themselves. It lints and validates all main Bicep entry points, then performs
+# an Azure preflight validation for the hub deployment.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   AZURE_CLIENT_ID      - App registration / managed identity client ID
+#   AZURE_TENANT_ID      - Azure AD tenant ID
+#   AZURE_SUBSCRIPTION_ID - Target Azure subscription ID
+#
+# OIDC authentication: No client secret is stored. GitHub exchanges a short-lived
+# OIDC token for an Azure access token using federated identity credentials
+# configured in oidc.json. The id-token: write permission below is required for
+# this exchange to work.
+
+name: Bicep CI – Lint & Validate
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'main/**'
+      - 'modules/**'
+      - 'bicepconfig.json'
+      - '.github/workflows/**'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  lint-and-validate:
+    name: Lint & Validate Bicep
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Azure CLI is pre-installed on ubuntu-latest; install the Bicep CLI extension.
+      - name: Install Bicep CLI
+        run: az bicep install
+
+      # ── Lint ──────────────────────────────────────────────────────────────
+      - name: Lint – Hub
+        run: az bicep lint --file main/hub/hubmain.bicep
+
+      - name: Lint – Apps spoke
+        run: az bicep lint --file main/apps-spoke/appsmain.bicep
+
+      - name: Lint – Data spoke
+        run: az bicep lint --file main/data-spoke/datamain.bicep
+
+      # ── Build (compile check) ─────────────────────────────────────────────
+      - name: Build – Hub
+        run: az bicep build --file main/hub/hubmain.bicep
+
+      - name: Build – Apps spoke
+        run: az bicep build --file main/apps-spoke/appsmain.bicep
+
+      - name: Build – Data spoke
+        run: az bicep build --file main/data-spoke/datamain.bicep
+
+      # ── Azure preflight validation ────────────────────────────────────────
+      # Login with OIDC (no client secret required).
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Preflight validate – Hub
+        run: |
+          az deployment sub validate \
+            --template-file main/hub/hubmain.bicep \
+            --parameters @main/hub/hub.parameters.json \
+            --location westus

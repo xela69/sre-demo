@@ -1,0 +1,156 @@
+# CD: Deploy Spoke Infrastructure
+#
+# Deploys one or all spoke networks (apps, data, dc) to Azure at subscription
+# scope. Runs what-if → deploy for each selected spoke.
+#
+# Spoke → file mapping:
+#   apps  → main/apps-spoke/appsmain.bicep   + main/apps-spoke/apps.parameters.json
+#   data  → main/data-spoke/datamain.bicep   + main/data-spoke/data.parameters.json
+#   dc    → main/dc-spoke/dcmain.bicep       + main/dc-spoke/dc.parameters.json
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   AZURE_CLIENT_ID       - App registration / managed identity client ID
+#   AZURE_TENANT_ID       - Azure AD tenant ID
+#   AZURE_SUBSCRIPTION_ID - Target Azure subscription ID
+#   HUB_ACCESS_KEY        - Admin password / access key shared across spokes
+#
+# OIDC authentication: No client secret is stored. GitHub exchanges a short-lived
+# OIDC token for an Azure access token using federated identity credentials
+# configured in oidc.json. The id-token: write permission below is required.
+#
+# Manual run: Actions → "CD: Deploy Spoke Infrastructure" → Run workflow.
+#   Choose the target environment and which spoke(s) to deploy.
+
+name: CD – Deploy Spoke Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment (lab, dev, prod)'
+        required: false
+        default: 'lab'
+      spoke:
+        description: 'Spoke to deploy'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - apps
+          - data
+          - dc
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  # ── Apps spoke ─────────────────────────────────────────────────────────────
+  deploy-apps:
+    name: Deploy Apps spoke
+    if: ${{ github.event.inputs.spoke == 'apps' || github.event.inputs.spoke == 'all' }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'lab' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: What-If preview – Apps spoke
+        run: |
+          az deployment sub what-if \
+            --template-file main/apps-spoke/appsmain.bicep \
+            --parameters @main/apps-spoke/apps.parameters.json \
+            --location westus
+
+      - name: Deploy – Apps spoke
+        run: |
+          az deployment sub create \
+            --template-file main/apps-spoke/appsmain.bicep \
+            --parameters @main/apps-spoke/apps.parameters.json \
+            --location westus \
+            --name "apps-spoke-${{ github.run_id }}"
+
+  # ── Data spoke ─────────────────────────────────────────────────────────────
+  deploy-data:
+    name: Deploy Data spoke
+    if: ${{ github.event.inputs.spoke == 'data' || github.event.inputs.spoke == 'all' }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'lab' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: What-If preview – Data spoke
+        run: |
+          az deployment sub what-if \
+            --template-file main/data-spoke/datamain.bicep \
+            --parameters @main/data-spoke/data.parameters.json \
+            --location westus
+
+      - name: Deploy – Data spoke
+        run: |
+          az deployment sub create \
+            --template-file main/data-spoke/datamain.bicep \
+            --parameters @main/data-spoke/data.parameters.json \
+            --location westus \
+            --name "data-spoke-${{ github.run_id }}"
+
+  # ── DC spoke ───────────────────────────────────────────────────────────────
+  deploy-dc:
+    name: Deploy DC spoke
+    if: ${{ github.event.inputs.spoke == 'dc' || github.event.inputs.spoke == 'all' }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'lab' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # DC spoke requires an accessKey parameter (admin password for DC VM).
+      # Apps and data spokes do not expose this parameter in their Bicep templates.
+      - name: Resolve DC parameters
+        id: params
+        run: |
+          ACCESS_KEY=$(echo "${{ secrets.HUB_ACCESS_KEY }}" | tr -d '\r')
+          echo "access_key=${ACCESS_KEY}" >> "$GITHUB_OUTPUT"
+
+      - name: What-If preview – DC spoke
+        run: |
+          az deployment sub what-if \
+            --template-file main/dc-spoke/dcmain.bicep \
+            --parameters @main/dc-spoke/dc.parameters.json \
+              accessKey="${{ steps.params.outputs.access_key }}" \
+            --location westus
+
+      - name: Deploy – DC spoke
+        run: |
+          az deployment sub create \
+            --template-file main/dc-spoke/dcmain.bicep \
+            --parameters @main/dc-spoke/dc.parameters.json \
+              accessKey="${{ steps.params.outputs.access_key }}" \
+            --location westus \
+            --name "dc-spoke-${{ github.run_id }}"

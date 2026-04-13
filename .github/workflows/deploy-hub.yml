@@ -1,0 +1,114 @@
+# CD: Deploy Hub Infrastructure
+#
+# Deploys the hub network (hubmain.bicep) to Azure at subscription scope.
+# Runs validate → what-if → deploy.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   AZURE_CLIENT_ID       - App registration / managed identity client ID
+#   AZURE_TENANT_ID       - Azure AD tenant ID
+#   AZURE_SUBSCRIPTION_ID - Target Azure subscription ID
+#   SSH_PUBLIC_KEY        - Public SSH key for hub VM(s)
+#   HUB_ACCESS_KEY        - Admin password / access key for hub resources
+#   NAT_PUBLIC_IP         - Public IP for the NAT gateway (can be overridden
+#                           via the workflow_dispatch input below)
+#
+# OIDC authentication: No client secret is stored. GitHub exchanges a short-lived
+# OIDC token for an Azure access token using federated identity credentials
+# configured in oidc.json. The id-token: write permission below is required.
+#
+# Manual run: Actions → "CD: Deploy Hub Infrastructure" → Run workflow.
+#   Select the target environment and optionally override natPublicIP.
+#
+# Automatic trigger: Uncomment the push block below once you are ready for
+# GitOps-style continuous deployment on merges to main.
+
+name: CD – Deploy Hub Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment (lab, dev, prod)'
+        required: false
+        default: 'lab'
+      natPublicIP:
+        description: 'Override NAT public IP for this run (leave blank to use NAT_PUBLIC_IP secret)'
+        required: false
+
+  # Uncomment when ready for automatic deployment on push to main:
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - 'main/hub/**'
+  #     - 'modules/hub/**'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy Hub
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'lab' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Resolve secrets / inputs into local variables shared across steps.
+      - name: Resolve deployment parameters
+        id: params
+        run: |
+          SSH_KEY=$(echo "${{ secrets.SSH_PUBLIC_KEY }}" | tr -d '\r')
+          ACCESS_KEY=$(echo "${{ secrets.HUB_ACCESS_KEY }}" | tr -d '\r')
+          NAT_IP="${{ github.event.inputs.natPublicIP }}"
+          if [ -z "$NAT_IP" ]; then
+            NAT_IP=$(echo "${{ secrets.NAT_PUBLIC_IP }}" | tr -d '\r')
+          fi
+          if [ -z "$NAT_IP" ]; then
+            echo "❌ NAT public IP is required. Provide the 'natPublicIP' workflow input or set the NAT_PUBLIC_IP repository secret."
+            exit 1
+          fi
+          echo "nat_ip=${NAT_IP}" >> "$GITHUB_OUTPUT"
+          echo "ssh_key=${SSH_KEY}" >> "$GITHUB_OUTPUT"
+          echo "access_key=${ACCESS_KEY}" >> "$GITHUB_OUTPUT"
+
+      - name: Preflight validate – Hub
+        run: |
+          az deployment sub validate \
+            --template-file main/hub/hubmain.bicep \
+            --parameters @main/hub/hub.parameters.json \
+              natPublicIP="${{ steps.params.outputs.nat_ip }}" \
+              accessKey="${{ steps.params.outputs.access_key }}" \
+              sshPublicKey="${{ steps.params.outputs.ssh_key }}" \
+            --location westus
+
+      - name: What-If preview – Hub
+        run: |
+          az deployment sub what-if \
+            --template-file main/hub/hubmain.bicep \
+            --parameters @main/hub/hub.parameters.json \
+              natPublicIP="${{ steps.params.outputs.nat_ip }}" \
+              accessKey="${{ steps.params.outputs.access_key }}" \
+              sshPublicKey="${{ steps.params.outputs.ssh_key }}" \
+            --location westus
+
+      - name: Deploy – Hub
+        run: |
+          az deployment sub create \
+            --template-file main/hub/hubmain.bicep \
+            --parameters @main/hub/hub.parameters.json \
+              natPublicIP="${{ steps.params.outputs.nat_ip }}" \
+              accessKey="${{ steps.params.outputs.access_key }}" \
+              sshPublicKey="${{ steps.params.outputs.ssh_key }}" \
+            --location westus \
+            --name "hub-${{ github.run_id }}"
