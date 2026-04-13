@@ -59,7 +59,7 @@ Custom modules kept where AVM replacement adds no value (complex UDR/peering/fir
 
 ---
 
-## Lab VM Deployment (data-spoke)
+## VM Deployment (data-spoke)
 
 Deployed via `main/data-spoke/opmain.bicep` using AVM `compute/virtual-machine:0.9.0`.
 Subscription: `$dataSubId`
