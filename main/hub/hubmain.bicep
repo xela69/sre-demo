@@ -1131,7 +1131,7 @@ module adxCluster 'br/public:avm/res/kusto/cluster:0.10.0' = if (deployAdx && de
   params: {
     name: 'xelaadx${take(uniqueString(monitorRgName), 4)}'
     location: hubLocation
-    sku: 'Dev(No SLA)_Standard_E2a_v4'
+    sku: 'Dev(No SLA)_Standard_D11_v2' // fallback: E2a_v4 has no capacity in westus2
     tier: 'Basic'
     capacity: 1
     enableDiskEncryption: true
