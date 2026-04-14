@@ -1,74 +1,83 @@
 name: Bicep CI – Lint & Validate
 
-# Manual trigger only — run before merging changes to main/**, modules/**, bicepconfig.json
+# Triggers:
+#   - Automatically on any PR that touches Bicep/module/config files (SRE agent PRs)
+#   - Manually via workflow_dispatch at any time
 on:
-        workflow_dispatch:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "main/**"
+      - "modules/**"
+      - "bicepconfig.json"
+      - ".github/workflows/*.yml"
 
 # ── Hub constants (lint/validate targets hub sub for preflight) ───────────────
 env:
-        HUB_SUB: ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9
-        HUB_LOCATION: westus2
+  HUB_SUB: ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9
+  HUB_LOCATION: westus2
 
 permissions:
-        id-token: write # required for OIDC login (preflight validate step)
-        contents: read
+  id-token: write # required for OIDC login (preflight validate step)
+  contents: read
 
 jobs:
-        lint-and-validate:
-                name: Lint & Validate Bicep
-                runs-on: ubuntu-latest
+  lint-and-validate:
+    name: Lint & Validate Bicep
+    runs-on: ubuntu-latest
 
-                steps:
-                        - name: Checkout
-                          uses: actions/checkout@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-                        - name: Install Bicep CLI
-                          run: az bicep install
+      - name: Install Bicep CLI
+        run: az bicep install
 
-                        # ── Lint ─────────────────────────────────────────────────────────────────
-                        - name: Lint – Hub
-                          run: az bicep lint --file main/hub/hubmain.bicep
+      # ── Lint ─────────────────────────────────────────────────────────────────
+      - name: Lint – Hub
+        run: az bicep lint --file main/hub/hubmain.bicep
 
-                        - name: Lint – Apps spoke
-                          run: az bicep lint --file main/apps-spoke/appsmain.bicep
+      - name: Lint – Apps spoke
+        run: az bicep lint --file main/apps-spoke/appsmain.bicep
 
-                        - name: Lint – Data spoke
-                          run: az bicep lint --file main/data-spoke/datamain.bicep
+      - name: Lint – Data spoke
+        run: az bicep lint --file main/data-spoke/datamain.bicep
 
-                        - name: Lint – DC spoke
-                          run: az bicep lint --file main/dc-spoke/dcmain.bicep
+      - name: Lint – DC spoke
+        run: az bicep lint --file main/dc-spoke/dcmain.bicep
 
-                        # ── Build (compile check) ─────────────────────────────────────────────────
-                        - name: Build – Hub
-                          run: az bicep build --file main/hub/hubmain.bicep
+      # ── Build (compile check) ─────────────────────────────────────────────────
+      - name: Build – Hub
+        run: az bicep build --file main/hub/hubmain.bicep
 
-                        - name: Build – Apps spoke
-                          run: az bicep build --file main/apps-spoke/appsmain.bicep
+      - name: Build – Apps spoke
+        run: az bicep build --file main/apps-spoke/appsmain.bicep
 
-                        - name: Build – Data spoke
-                          run: az bicep build --file main/data-spoke/datamain.bicep
+      - name: Build – Data spoke
+        run: az bicep build --file main/data-spoke/datamain.bicep
 
-                        - name: Build – DC spoke
-                          run: az bicep build --file main/dc-spoke/dcmain.bicep
+      - name: Build – DC spoke
+        run: az bicep build --file main/dc-spoke/dcmain.bicep
 
-                        # ── Azure preflight validate (hub) ────────────────────────────────────────
-                        # Logs in with OIDC against the hub subscription and runs ARM preflight.
-                        # Secret params (accessKey, sshPublicKey, natPublicIP) are passed as
-                        # CI-safe stubs — preflight checks template structure, not real values.
-                        - name: Azure Login (OIDC)
-                          uses: azure/login@v2
-                          with:
-                                  client-id: ${{ secrets.AZURE_CLIENT_ID }}
-                                  tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-                                  subscription-id: ${{ env.HUB_SUB }}
+      # ── Azure preflight validate (hub) ────────────────────────────────────────
+      # Logs in with OIDC against the hub subscription and runs ARM preflight.
+      # Secret params (accessKey, sshPublicKey, natPublicIP) are passed as
+      # CI-safe stubs — preflight checks template structure, not real values.
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.HUB_SUB }}
 
-                        - name: Preflight validate – Hub
-                          run: |
-                                  az deployment sub validate \
-                                    --subscription "${{ env.HUB_SUB }}" \
-                                    --location "${{ env.HUB_LOCATION }}" \
-                                    --template-file main/hub/hubmain.bicep \
-                                    --parameters @main/hub/hub.parameters.json \
-                                      natPublicIP="1.2.3.4" \
-                                      accessKey="CI-stub-not-real" \
-                                      sshPublicKey="ssh-rsa AAAA CI-stub"
+      - name: Preflight validate – Hub
+        run: |
+          az deployment sub validate \
+            --subscription "${{ env.HUB_SUB }}" \
+            --location "${{ env.HUB_LOCATION }}" \
+            --template-file main/hub/hubmain.bicep \
+            --parameters @main/hub/hub.parameters.json \
+              natPublicIP="1.2.3.4" \
+              accessKey="CI-stub-not-real" \
+              sshPublicKey="ssh-rsa AAAA CI-stub"
