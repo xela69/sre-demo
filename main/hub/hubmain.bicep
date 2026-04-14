@@ -15,6 +15,8 @@ param deployFirewall bool = false // Toggle to deploy Azure Firewall
 param peerAppsSpoke bool = true // apps spoke (42021d44 / AppsRG)
 // param peerDcSpoke   bool = false  // dc spoke   — uncomment when ready
 // param peerDataSpoke bool = false  // data spoke — uncomment when ready
+// ── Azure Data Explorer (Kusto) cluster for SRE analytics ──
+param deployAdx bool = true // Toggle to deploy Azure Data Explorer cluster
 
 param natPublicIP string //injected securely from main.bicep for NAT testing
 param accessKey string
@@ -1118,4 +1120,20 @@ module vmDiag '../../modules/hub/vm-diag.bicep' = if (deployVM) {
     linuxVmName: linuxVmName
   }
   dependsOn: [hubVM, linuxVM]
+}
+// ── Azure Data Explorer (Kusto) cluster for SRE analytics ──
+module adxCluster '../../modules/hub/adx-cluster.bicep' = if (deployAdx && deploylogsAnalytics) {
+  name: 'adxClusterModule'
+  scope: resourceGroup(logsRGroup.name)
+  params: {
+    clusterName: 'xelaadx${take(uniqueString(monitorRgName), 4)}'
+    location: hubLocation
+    logAnalyticsWorkspaceId: logsAnalytics!.outputs.resourceId
+    skuName: 'Dev(No SLA)_Standard_E2a_v4'
+    skuTier: 'Basic'
+    skuCapacity: 1
+    databaseName: 'sredb'
+    dataRetentionDays: 365
+    hotCacheDays: 31
+  }
 }
