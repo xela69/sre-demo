@@ -1,0 +1,61 @@
+name: Deploy Data Spoke
+
+# Manual trigger only — no push/PR/schedule triggers
+on:
+        workflow_dispatch:
+                inputs:
+                        what_if:
+                                description: "Run as what-if (preview only, no changes)"
+                                required: false
+                                default: "true"
+                                type: choice
+                                options: ["true", "false"]
+
+# ── Subscription constants (already embedded in Bicep — not secret) ────────────
+env:
+        DATA_SUB: 8de6c6e8-53af-4ded-a480-fd20c6093e78
+        DATA_LOCATION: westus3
+
+jobs:
+        deploy-data-spoke:
+                name: Deploy Data Spoke Bicep
+                runs-on: ubuntu-latest
+                permissions:
+                        id-token: write # required for OIDC login
+                        contents: read
+
+                steps:
+                        - name: Checkout
+                          uses: actions/checkout@v4
+
+                        - name: Azure Login (OIDC)
+                          uses: azure/login@v2
+                          with:
+                                  client-id: ${{ secrets.AZURE_CLIENT_ID }}
+                                  tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                                  subscription-id: ${{ env.DATA_SUB }}
+
+                        - name: Deploy Data Spoke Bicep
+                          run: |
+                                  LAB_PASSWORD=$(echo "${{ secrets.LAB_PASSWORD }}" | tr -d '\r')
+
+                                  if [ -z "$LAB_PASSWORD" ]; then
+                                    echo "❌ LAB_PASSWORD secret is required for data spoke VM admin password."
+                                    exit 1
+                                  fi
+
+                                  WHAT_IF_FLAG=""
+                                  if [ "${{ inputs.what_if }}" = "true" ]; then
+                                    WHAT_IF_FLAG="--what-if"
+                                    echo "ℹ️  Running in what-if (preview) mode"
+                                  else
+                                    echo "🚀 Running LIVE deployment"
+                                  fi
+
+                                  az deployment sub create \
+                                    --subscription "${{ env.DATA_SUB }}" \
+                                    --location "${{ env.DATA_LOCATION }}" \
+                                    --template-file main/data-spoke/datamain.bicep \
+                                    --parameters \
+                                        labPassword="${LAB_PASSWORD}" \
+                                    $WHAT_IF_FLAG

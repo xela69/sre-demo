@@ -1,0 +1,61 @@
+name: Deploy DC Spoke
+
+# Manual trigger only — no push/PR/schedule triggers
+on:
+        workflow_dispatch:
+                inputs:
+                        what_if:
+                                description: "Run as what-if (preview only, no changes)"
+                                required: false
+                                default: "true"
+                                type: choice
+                                options: ["true", "false"]
+
+# ── Subscription constants (already embedded in Bicep — not secret) ────────────
+env:
+        DC_SUB: 8de6c6e8-53af-4ded-a480-fd20c6093e78
+        DC_LOCATION: centralus
+
+jobs:
+        deploy-dc-spoke:
+                name: Deploy DC Spoke Bicep
+                runs-on: ubuntu-latest
+                permissions:
+                        id-token: write # required for OIDC login
+                        contents: read
+
+                steps:
+                        - name: Checkout
+                          uses: actions/checkout@v4
+
+                        - name: Azure Login (OIDC)
+                          uses: azure/login@v2
+                          with:
+                                  client-id: ${{ secrets.AZURE_CLIENT_ID }}
+                                  tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                                  subscription-id: ${{ env.DC_SUB }}
+
+                        - name: Deploy DC Spoke Bicep
+                          run: |
+                                  ACCESS_KEY=$(echo "${{ secrets.HUB_ACCESS_KEY }}" | tr -d '\r')
+
+                                  if [ -z "$ACCESS_KEY" ]; then
+                                    echo "❌ HUB_ACCESS_KEY secret is required for DC spoke VM admin password."
+                                    exit 1
+                                  fi
+
+                                  WHAT_IF_FLAG=""
+                                  if [ "${{ inputs.what_if }}" = "true" ]; then
+                                    WHAT_IF_FLAG="--what-if"
+                                    echo "ℹ️  Running in what-if (preview) mode"
+                                  else
+                                    echo "🚀 Running LIVE deployment"
+                                  fi
+
+                                  az deployment sub create \
+                                    --subscription "${{ env.DC_SUB }}" \
+                                    --location "${{ env.DC_LOCATION }}" \
+                                    --template-file main/dc-spoke/dcmain.bicep \
+                                    --parameters \
+                                        accessKey="${ACCESS_KEY}" \
+                                    $WHAT_IF_FLAG

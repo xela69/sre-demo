@@ -1,0 +1,71 @@
+name: Deploy Hub
+
+# Manual trigger only — no push/PR/schedule triggers
+on:
+        workflow_dispatch:
+                inputs:
+                        what_if:
+                                description: "Run as what-if (preview only, no changes)"
+                                required: false
+                                default: "true"
+                                type: choice
+                                options: ["true", "false"]
+                        natPublicIP:
+                                description: "Override NAT public IP (leave blank to use NAT_PUBLIC_IP secret)"
+                                required: false
+
+# ── Subscription constants (already embedded in Bicep — not secret) ────────────
+env:
+        HUB_SUB: ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9
+        HUB_LOCATION: westus2
+
+jobs:
+        deploy-hub:
+                name: Deploy Hub Bicep
+                runs-on: ubuntu-latest
+                permissions:
+                        id-token: write # required for OIDC login
+                        contents: read
+
+                steps:
+                        - name: Checkout
+                          uses: actions/checkout@v4
+
+                        - name: Azure Login (OIDC)
+                          uses: azure/login@v2
+                          with:
+                                  client-id: ${{ secrets.AZURE_CLIENT_ID }}
+                                  tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+                                  subscription-id: ${{ env.HUB_SUB }}
+
+                        - name: Deploy Hub Bicep
+                          run: |
+                                  SSH_KEY=$(echo "${{ secrets.SSH_PUBLIC_KEY }}" | tr -d '\r')
+                                  ACCESS_KEY=$(echo "${{ secrets.HUB_ACCESS_KEY }}" | tr -d '\r')
+
+                                  NAT_IP="${{ inputs.natPublicIP }}"
+                                  if [ -z "$NAT_IP" ]; then
+                                    NAT_IP=$(echo "${{ secrets.NAT_PUBLIC_IP }}" | tr -d '\r')
+                                  fi
+                                  if [ -z "$NAT_IP" ]; then
+                                    echo "❌ NAT public IP is required. Provide 'natPublicIP' input or set NAT_PUBLIC_IP secret."
+                                    exit 1
+                                  fi
+
+                                  WHAT_IF_FLAG=""
+                                  if [ "${{ inputs.what_if }}" = "true" ]; then
+                                    WHAT_IF_FLAG="--what-if"
+                                    echo "ℹ️  Running in what-if (preview) mode"
+                                  else
+                                    echo "🚀 Running LIVE deployment"
+                                  fi
+
+                                  az deployment sub create \
+                                    --subscription "${{ env.HUB_SUB }}" \
+                                    --location "${{ env.HUB_LOCATION }}" \
+                                    --template-file main/hub/hubmain.bicep \
+                                    --parameters \
+                                        natPublicIP="${NAT_IP}" \
+                                        accessKey="${ACCESS_KEY}" \
+                                        sshPublicKey="${SSH_KEY}" \
+                                    $WHAT_IF_FLAG

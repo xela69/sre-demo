@@ -1,7 +1,7 @@
 {
-  "name": "github-actions-xelatech-lab",
+  "name": "github-actions-sre-demo",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:xela69/xelatech-lab:ref:refs/heads/main",
+  "subject": "repo:xela69/sre-demo:ref:refs/heads/main",
   "description": "Federated credential for GitHub Actions OIDC workflow",
   "audiences": [
     "api://AzureADTokenExchange"
