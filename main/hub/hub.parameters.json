@@ -52,6 +52,9 @@
     },
     "enableVmInsightsPerfDcr": {
       "value": true
+    },
+    "deployAdx": {
+      "value": true
     }
   }
 }

@@ -17,6 +17,8 @@ param peerAppsSpoke bool = true // apps spoke (42021d44 / AppsRG)
 // param peerDataSpoke bool = false  // data spoke — uncomment when ready
 // ── Azure Data Explorer (Kusto) cluster for SRE analytics ──
 param deployAdx bool = true // Toggle to deploy Azure Data Explorer cluster
+@description('Optional principal ID of the SRE Agent managed identity for Kusto RBAC. Leave empty to skip the cluster viewer assignment.')
+param sreAgentPrincipalId string = ''
 
 param natPublicIP string //injected securely from main.bicep for NAT testing
 param accessKey string
@@ -1121,19 +1123,59 @@ module vmDiag '../../modules/hub/vm-diag.bicep' = if (deployVM) {
   }
   dependsOn: [hubVM, linuxVM]
 }
-// ── Azure Data Explorer (Kusto) cluster for SRE analytics ──
-module adxCluster '../../modules/hub/adx-cluster.bicep' = if (deployAdx && deploylogsAnalytics) {
+// ── AVM REPLACEMENT: Azure Data Explorer (Kusto) cluster for SRE analytics ──
+// br/public:avm/res/kusto/cluster:0.10.0 — API 2024-04-13, native DB + principal + diag support
+module adxCluster 'br/public:avm/res/kusto/cluster:0.10.0' = if (deployAdx && deploylogsAnalytics) {
   name: 'adxClusterModule'
   scope: resourceGroup(logsRGroup.name)
   params: {
-    clusterName: 'xelaadx${take(uniqueString(monitorRgName), 4)}'
+    name: 'xelaadx${take(uniqueString(monitorRgName), 4)}'
     location: hubLocation
-    logAnalyticsWorkspaceId: logsAnalytics!.outputs.resourceId
-    skuName: 'Dev(No SLA)_Standard_E2a_v4'
-    skuTier: 'Basic'
-    skuCapacity: 1
-    databaseName: 'sredb'
-    dataRetentionDays: 365
-    hotCacheDays: 31
+    sku: 'Dev(No SLA)_Standard_E2a_v4'
+    tier: 'Basic'
+    capacity: 1
+    enableDiskEncryption: true
+    enableStreamingIngest: true
+    managedIdentities: {
+      systemAssigned: true
+    }
+    databases: [
+      {
+        name: 'sredb'
+        kind: 'ReadWrite'
+        readWriteProperties: {
+          softDeletePeriod: 'P365D'
+          hotCachePeriod: 'P31D'
+        }
+      }
+    ]
+    clusterPrincipalAssignments: empty(sreAgentPrincipalId)
+      ? []
+      : [
+          {
+            principalId: sreAgentPrincipalId
+            principalType: 'App'
+            role: 'AllDatabasesViewer'
+          }
+        ]
+    diagnosticSettings: [
+      {
+        workspaceResourceId: logsAnalytics!.outputs.resourceId
+        logCategoriesAndGroups: [
+          { categoryGroup: 'allLogs' }
+        ]
+        metricCategories: [
+          { category: 'AllMetrics' }
+        ]
+      }
+    ]
+    tags: {
+      Service: 'Analytics'
+      CostCenter: 'Infrastructure'
+      Environment: 'Production'
+      Owner: 'SRE'
+      SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
+    }
   }
 }
