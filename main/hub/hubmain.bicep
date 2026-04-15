@@ -301,6 +301,24 @@ module failureAnomalies '../../modules/hub/failure-anomalies.bicep' = if (deploy
   }
 }
 
+// ── Activity Log (Audit) → Hub LAW ──
+// Forwards Administrative, Security, ServiceHealth, Alert, Policy, ResourceHealth
+// to the central workspace. Subscription-scope resource (no RG needed).
+resource activityLogDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (deploylogsAnalytics) {
+  name: 'hub-activity-to-law'
+  properties: {
+    workspaceId: logsAnalytics!.outputs.resourceId
+    logs: [
+      { category: 'Administrative', enabled: true }
+      { category: 'Security', enabled: true }
+      { category: 'ServiceHealth', enabled: true }
+      { category: 'Alert', enabled: true }
+      { category: 'Policy', enabled: true }
+      { category: 'ResourceHealth', enabled: true }
+    ]
+  }
+}
+
 // ── AVM: Data Collection Rule for VM Insights (Map stream only) ──
 // Name MUST start with "MSVMI-" for the Azure portal to recognise it as a VM Insights DCR
 module vmDataCollectionRule 'br/public:avm/res/insights/data-collection-rule:0.10.0' = if (deploylogsAnalytics && deployVM) {
@@ -1014,13 +1032,16 @@ module vpngw 'br/public:avm/res/network/virtual-network-gateway:0.9.0' = if (dep
         principalType: 'ServicePrincipal'
       }
     ]
-    // Diagnostics: allLogs + AllMetrics
+    // Diagnostics: VPN-specific categories (allLogs group not supported by this resource type)
     diagnosticSettings: [
       {
         name: 'diag-vpngw'
         workspaceResourceId: logsAnalytics!.outputs.resourceId
         logCategoriesAndGroups: [
-          { categoryGroup: 'allLogs' }
+          { category: 'GatewayDiagnosticLog' }
+          { category: 'TunnelDiagnosticLog' }
+          { category: 'IKEDiagnosticLog' }
+          { category: 'RouteDiagnosticLog' }
         ]
         metricCategories: [
           { category: 'AllMetrics' }
@@ -1101,15 +1122,16 @@ module monitorDiag '../../modules/hub/monitor-diag.bicep' = if (deploylogsAnalyt
   dependsOn: [appInsights, vmDataCollectionRule]
 }
 
-module networkDiag '../../modules/hub/network-diag.bicep' = if (deployFirewall) {
+module networkDiag '../../modules/hub/network-diag.bicep' = if (deployFirewall || deployVpnGw) {
   name: 'networkDiagModule'
   scope: resourceGroup(networkRGroup.name)
   params: {
     workspaceId: logsAnalytics!.outputs.resourceId
     deployFirewall: deployFirewall
     firewallPublicIpName: firewallPublicIpName
+    deployVpnGw: deployVpnGw
   }
-  dependsOn: [firewall]
+  dependsOn: [firewall, vnpConnection]
 }
 
 module vmDiag '../../modules/hub/vm-diag.bicep' = if (deployVM) {

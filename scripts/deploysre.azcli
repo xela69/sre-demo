@@ -101,3 +101,8 @@ nslookup <yourPE>.privatelink.database.windows.net <ResolverInboundIP>
 
 # Partner public FQDNs forced to public
 nslookup sql-uat-abl-hw-cps.database.windows.net <ResolverInboundIP>
+#
+#Option 1 — Connection Reset (safest, auto-recovers ~30s)
+az network vpn-connection reset \
+  --subscription ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9 \
+  --resource-group hubRG --name XelaVPNConnection
