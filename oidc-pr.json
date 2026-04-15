@@ -1,0 +1,9 @@
+{
+  "name": "github-actions-sre-demo-pr",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:xela69/sre-demo:pull_request",
+  "description": "Federated credential for GitHub Actions OIDC – pull_request trigger",
+  "audiences": [
+    "api://AzureADTokenExchange"
+  ]
+}
