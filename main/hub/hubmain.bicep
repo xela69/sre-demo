@@ -1147,6 +1147,7 @@ module adxCluster 'br/public:avm/res/kusto/cluster:0.10.0' = if (deployAdx && de
           softDeletePeriod: 'P365D'
           hotCachePeriod: 'P31D'
         }
+        databasePrincipalAssignments: [] // must be present — AVM v0.10.0 accesses this unconditionally
       }
     ]
     clusterPrincipalAssignments: empty(sreAgentPrincipalId)
