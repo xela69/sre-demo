@@ -11,6 +11,17 @@ param managedIdentityId string
 param containerImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 @description('Log Analytics workspace resource ID for diagnostics.')
 param logAnalyticsWorkspaceId string = ''
+@description('Allowed CORS origins (comma-separated). Injected as CORS_ORIGINS env var so the API can permit the frontend URL.')
+param corsOrigins string = ''
+
+// Split corsOrigins into array for ASP.NET config format (AllowedOrigins__0, AllowedOrigins__1, ...)
+var corsOriginList = empty(corsOrigins) ? [] : split(corsOrigins, ',')
+var corsEnvVars = [
+  for (origin, i) in corsOriginList: {
+    name: 'AllowedOrigins__${i}'
+    value: trim(origin)
+  }
+]
 
 // ── AVM: Managed Environment ──
 // https://github.com/Azure/bicep-registry-modules/tree/main/avm/res/app/managed-environment
@@ -70,10 +81,10 @@ module containerApp 'br/public:avm/res/app/container-app:0.22.0' = {
       userAssignedResourceIds: [managedIdentityId]
     }
 
-    // Ingress: external HTTP on port 80 — perimeter protected by Azure Firewall
+    // Ingress: external HTTP on port 8080 — .NET 9 ASPNETCORE_URLS default
     // WAF (App Gateway) restriction to be added once xelawafgw module is built
     ingressExternal: true
-    ingressTargetPort: 80
+    ingressTargetPort: 8080
     ingressAllowInsecure: true
     ingressTransport: 'auto'
     traffic: [
@@ -110,6 +121,7 @@ module containerApp 'br/public:avm/res/app/container-app:0.22.0' = {
           cpu: json('1.0')
           memory: '2.0Gi'
         }
+        env: empty(corsOrigins) ? [] : corsEnvVars
       }
     ]
 

@@ -556,6 +556,7 @@ module containerApp '../../modules/apps/containerApp.bicep' = if (deployContaine
     containerImage: deployGrubify
       ? '${resolvedAcrServer}/${grubifyApiImage}'
       : 'mcr.microsoft.com/k8se/quickstart:latest'
+    corsOrigins: deployGrubify ? 'https://grubify-frontend.yellowrock-4936b38e.centralus.azurecontainerapps.io' : ''
   }
 }
 
