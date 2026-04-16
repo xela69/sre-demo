@@ -27,6 +27,8 @@ GRUBIFY_REPO="https://github.com/dm-chelupati/grubify.git"
 GRUBIFY_DIR="/tmp/grubify-src"
 API_IMAGE="grubify-api:latest"
 FRONTEND_IMAGE="grubify-frontend:latest"
+GRUBIFY_API_DIR="GrubifyApi"
+GRUBIFY_FRONTEND_DIR="grubify-frontend"
 
 echo "═══════════════════════════════════════════════════════"
 echo "  Grubify → sre-demo apps-spoke deploy"
@@ -71,20 +73,20 @@ echo "▶ Building and pushing images via az acr build (ACR Tasks)..."
 
 if [[ "$DRY_RUN" == "true" ]]; then
   echo "  [DRY RUN] Would run:"
-  echo "    az acr build --registry ${ACR_NAME} --image ${API_IMAGE} ${GRUBIFY_DIR}/api"
-  echo "    az acr build --registry ${ACR_NAME} --image ${FRONTEND_IMAGE} ${GRUBIFY_DIR}/frontend"
+  echo "    az acr build --registry ${ACR_NAME} --image ${API_IMAGE} ${GRUBIFY_DIR}/${GRUBIFY_API_DIR}"
+  echo "    az acr build --registry ${ACR_NAME} --image ${FRONTEND_IMAGE} ${GRUBIFY_DIR}/${GRUBIFY_FRONTEND_DIR}"
 else
   echo "  Building grubify-api..."
   az acr build \
     --registry "$ACR_NAME" \
     --image "$API_IMAGE" \
-    "${GRUBIFY_DIR}/api"
+    "${GRUBIFY_DIR}/${GRUBIFY_API_DIR}"
 
   echo "  Building grubify-frontend..."
   az acr build \
     --registry "$ACR_NAME" \
     --image "$FRONTEND_IMAGE" \
-    "${GRUBIFY_DIR}/frontend"
+    "${GRUBIFY_DIR}/${GRUBIFY_FRONTEND_DIR}"
 fi
 
 # ── 5. Redeploy apps-spoke with Grubify enabled ───────────────────────────────
