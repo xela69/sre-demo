@@ -479,6 +479,16 @@ resource hubVmInsightsPerfDcr 'Microsoft.Insights/dataCollectionRules@2023-03-11
 // ── Container App deployment ──
 param spokeContainerRgName string = 'AppsRG-ContainerApp'
 
+// ── Grubify: set deployGrubify=true once images are pushed to ACR ──
+param deployGrubify bool = false
+@description('Grubify API image tag in hub ACR (e.g. grubify-api:latest). Leave default until image is built.')
+param grubifyApiImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
+@description('Grubify frontend image tag in hub ACR (e.g. grubify-frontend:latest). Leave default until image is built.')
+param grubifyFrontendImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
+@description('App Insights connection string from hub (injected at deploy time).')
+@secure()
+param appInsightsConnectionString string = ''
+
 resource containerRGroup 'Microsoft.Resources/resourceGroups@2024-11-01' = if (deployContainerApp) {
   name: spokeContainerRgName
   location: spokeLocation
@@ -492,14 +502,42 @@ resource containerRGroup 'Microsoft.Resources/resourceGroups@2024-11-01' = if (d
   }
 }
 
+// ── Grubify API — reuses the existing containerApp module; overrides image when deployGrubify=true ──
 module containerApp '../../modules/apps/containerApp.bicep' = if (deployContainerApp) {
   name: 'AppsContainerApp'
   scope: resourceGroup(spokeSubId, containerRGroup.name)
   params: {
     location: spokeLocation
+    containerAppName: deployGrubify ? 'grubify-api' : 'xela${take(uniqueString(spokeContainerRgName), 4)}'
+    containerAppEnvName: 'grubify-env'
     acrLoginServer: hubAcr.properties.loginServer
     managedIdentityId: hubAcrIdentity.id
     logAnalyticsWorkspaceId: hubLaw.id
     natPublicIP: natPublicIP
+    containerImage: deployGrubify
+      ? '${hubAcr.properties.loginServer}/${grubifyApiImage}'
+      : 'mcr.microsoft.com/k8se/quickstart:latest'
+  }
+}
+
+// ── Grubify Frontend — second container app reusing the same environment ──
+// Look up the env resource ID by name since containerApp module exposes env name not env resource ID
+resource grubifyEnv 'Microsoft.App/managedEnvironments@2024-03-01' existing = if (deployContainerApp && deployGrubify) {
+  name: containerApp!.outputs.containerAppEnvName
+  scope: resourceGroup(spokeSubId, containerRGroup.name)
+}
+
+module grubifyFrontend '../../modules/apps/grubifyFrontend.bicep' = if (deployContainerApp && deployGrubify) {
+  name: 'GrubifyFrontend'
+  scope: resourceGroup(spokeSubId, containerRGroup.name)
+  params: {
+    location: spokeLocation
+    containerAppEnvResourceId: grubifyEnv.id
+    acrLoginServer: hubAcr.properties.loginServer
+    managedIdentityId: hubAcrIdentity.id
+    frontendImage: '${hubAcr.properties.loginServer}/${grubifyFrontendImage}'
+    apiUrl: containerApp!.outputs.containerAppFqdn
+    appInsightsConnectionString: appInsightsConnectionString
+    logAnalyticsWorkspaceId: hubLaw.id
   }
 }
