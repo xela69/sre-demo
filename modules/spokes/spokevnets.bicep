@@ -6,6 +6,8 @@ param addressSpace string
 param subnetPrefixes array
 param subnetNames array
 param routeTableName string
+@description('Log Analytics workspace resource ID for VNet diagnostic settings. Leave empty to skip.')
+param logAnalyticsWorkspaceId string = ''
 
 // Spoke Route Table
 resource routeTable 'Microsoft.Network/routeTables@2024-07-01' = {
@@ -78,6 +80,21 @@ resource spokeToHubPeering 'Microsoft.Network/virtualNetworks/virtualNetworkPeer
     allowForwardedTraffic: true // ✓ Allow ‘HubVNet’ to receive forwarded traffic from ‘SpokeVNet’
     allowGatewayTransit: false // spoke peering itself doesn’t host a VPNGW
     useRemoteGateways: true // set true only after hub VPN GW is deployed (deployVpnGw=true in hubmain)
+  }
+}
+
+// ── Diagnostic Settings: all logs + all metrics → Log Analytics ──
+resource vnetDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (!empty(logAnalyticsWorkspaceId)) {
+  name: 'diag-${vnetName}'
+  scope: vnet
+  properties: {
+    workspaceId: logAnalyticsWorkspaceId
+    logs: [
+      { categoryGroup: 'allLogs', enabled: true }
+    ]
+    metrics: [
+      { category: 'AllMetrics', enabled: true }
+    ]
   }
 }
 

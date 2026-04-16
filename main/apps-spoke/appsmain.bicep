@@ -58,6 +58,7 @@ module spokeVnet '../../modules/spokes/spokevnets.bicep' = if (deploySpokeVnet) 
     hubVnetName: hubVnetName
     hubVnetResourceGroup: hubVnetResourceGroup
     hubVnetSubscriptionId: hubVnetSubscriptionId
+    logAnalyticsWorkspaceId: hubLaw.id
     routeTableName: 'appsRouteTable'
   }
 }
@@ -475,7 +476,51 @@ resource hubVmInsightsPerfDcr 'Microsoft.Insights/dataCollectionRules@2023-03-11
   name: 'MSVMI-Perf-xelaLogs${take(uniqueString('hubRG-Monitor'), 4)}'
   scope: resourceGroup(hubVnetSubscriptionId, 'hubRG-Monitor')
 }
+// ── Native diagnostic settings for VMs (AVM VM 0.9.0 has no diagnosticSettings param) ──
+// Scoped as child resources of each VM; captures host-level AllMetrics → hub LAW.
+// Guest logs and performance counters are covered by AMA + DCR above.
+resource existingAppsVM 'Microsoft.Compute/virtualMachines@2024-07-01' existing = if (deployVM) {
+  name: 'AppsVM'
+  scope: resourceGroup(spokeSubId, vmRGroup.name)
+}
+resource appsVMDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (deployVM) {
+  name: 'diag-AppsVM'
+  scope: existingAppsVM
+  properties: {
+    workspaceId: hubLaw.id
+    metrics: [{ category: 'AllMetrics', enabled: true, retentionPolicy: { enabled: false, days: 0 } }]
+  }
+  dependsOn: [spokeVM]
+}
 
+var linuxVMName = 'AppsLinuxVM${take(uniqueString(spokeVmRgName), 4)}'
+resource existingLinuxVM 'Microsoft.Compute/virtualMachines@2024-07-01' existing = if (deployVM && deployLinuxVM) {
+  name: linuxVMName
+  scope: resourceGroup(spokeSubId, vmRGroup.name)
+}
+resource linuxVMDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (deployVM && deployLinuxVM) {
+  name: 'diag-${linuxVMName}'
+  scope: existingLinuxVM
+  properties: {
+    workspaceId: hubLaw.id
+    metrics: [{ category: 'AllMetrics', enabled: true, retentionPolicy: { enabled: false, days: 0 } }]
+  }
+  dependsOn: [linuxVM]
+}
+
+resource existingSQLVM 'Microsoft.Compute/virtualMachines@2024-07-01' existing = if (deploySQLVM) {
+  name: 'AppsSQLVM'
+  scope: resourceGroup(spokeSubId, sqlVmRGroup.name)
+}
+resource sqlVMDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (deploySQLVM) {
+  name: 'diag-AppsSQLVM'
+  scope: existingSQLVM
+  properties: {
+    workspaceId: hubLaw.id
+    metrics: [{ category: 'AllMetrics', enabled: true, retentionPolicy: { enabled: false, days: 0 } }]
+  }
+  dependsOn: [sqlVM]
+}
 // ── Container App deployment ──
 param spokeContainerRgName string = 'AppsRG-ContainerApp'
 

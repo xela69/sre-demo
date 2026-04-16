@@ -36,6 +36,22 @@ module containerAppEnv 'br/public:avm/res/app/managed-environment:0.13.1' = {
   }
 }
 
+// ── Diagnostic Settings on the Managed Environment (native resource — AVM 0.13.1 has no diagnosticSettings param) ──
+resource existingEnv 'Microsoft.App/managedEnvironments@2024-03-01' existing = {
+  name: containerAppEnvName
+  dependsOn: [containerAppEnv]
+}
+
+resource envDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (!empty(logAnalyticsWorkspaceId)) {
+  name: 'diag-${containerAppEnvName}'
+  scope: existingEnv
+  properties: {
+    workspaceId: logAnalyticsWorkspaceId
+    logs: [{ categoryGroup: 'allLogs', enabled: true }]
+    metrics: [{ category: 'AllMetrics', enabled: true }]
+  }
+}
+
 // ── AVM: Container App ──
 // https://github.com/Azure/bicep-registry-modules/tree/main/avm/res/app/container-app
 module containerApp 'br/public:avm/res/app/container-app:0.22.0' = {
@@ -132,13 +148,14 @@ module containerApp 'br/public:avm/res/app/container-app:0.22.0' = {
       ]
     }
 
-    // App-level diagnostics to Log Analytics
+    // App-level diagnostics: all logs + all metrics → Log Analytics
     diagnosticSettings: empty(logAnalyticsWorkspaceId)
       ? []
       : [
           {
             workspaceResourceId: logAnalyticsWorkspaceId
             logAnalyticsDestinationType: 'Dedicated'
+            logCategoriesAndGroups: [{ categoryGroup: 'allLogs' }]
             metricCategories: [{ category: 'AllMetrics' }]
           }
         ]

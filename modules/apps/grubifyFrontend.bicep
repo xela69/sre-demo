@@ -106,6 +106,7 @@ module frontendApp 'br/public:avm/res/app/container-app:0.22.0' = {
           {
             workspaceResourceId: logAnalyticsWorkspaceId
             logAnalyticsDestinationType: 'Dedicated'
+            logCategoriesAndGroups: [{ categoryGroup: 'allLogs' }]
             metricCategories: [{ category: 'AllMetrics' }]
           }
         ]
