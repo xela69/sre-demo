@@ -548,7 +548,7 @@ module containerApp '../../modules/apps/containerApp.bicep' = if (deployContaine
   params: {
     location: spokeLocation
     containerAppName: deployGrubify ? 'grubify-api' : 'xela${take(uniqueString(spokeContainerRgName), 4)}'
-    containerAppEnvName: 'grubify-env'
+    containerAppEnvName: deployGrubify ? 'grubify-env' : 'xelaenv${take(uniqueString(spokeContainerRgName), 4)}'
     acrLoginServer: resolvedAcrServer
     managedIdentityId: hubAcrIdentity.id
     logAnalyticsWorkspaceId: hubLaw.id
