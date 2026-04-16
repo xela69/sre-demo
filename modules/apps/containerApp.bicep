@@ -26,6 +26,7 @@ module containerAppEnv 'br/public:avm/res/app/managed-environment:0.13.1' = {
       mtls: { enabled: false }
     }
     peerTrafficEncryption: false
+    publicNetworkAccess: 'Enabled'
     // Log Analytics integration via appLogsConfiguration
     appLogsConfiguration: empty(logAnalyticsWorkspaceId)
       ? { destination: 'azure-monitor' }
