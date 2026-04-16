@@ -476,48 +476,37 @@ resource hubVmInsightsPerfDcr 'Microsoft.Insights/dataCollectionRules@2023-03-11
   name: 'MSVMI-Perf-xelaLogs${take(uniqueString('hubRG-Monitor'), 4)}'
   scope: resourceGroup(hubVnetSubscriptionId, 'hubRG-Monitor')
 }
-// ── Native diagnostic settings for VMs (AVM VM 0.9.0 has no diagnosticSettings param) ──
-// Scoped as child resources of each VM; captures host-level AllMetrics → hub LAW.
-// Guest logs and performance counters are covered by AMA + DCR above.
-resource existingAppsVM 'Microsoft.Compute/virtualMachines@2024-07-01' existing = if (deployVM) {
-  name: 'AppsVM'
+// ── VM Diagnostic Settings (modules) ─────────────────────────────────────────
+// AVM virtual-machine 0.9.0 has no diagnosticSettings param; use a dedicated
+// module scoped to each VM's resource group.  Captures AllMetrics → hub LAW.
+// Guest logs/perf are covered by AMA + DCR configured at the module level above.
+module appsVMDiag '../../modules/apps/vmDiag.bicep' = if (deployVM) {
+  name: 'AppsVMDiag'
   scope: resourceGroup(spokeSubId, vmRGroup.name)
-}
-resource appsVMDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (deployVM) {
-  name: 'diag-AppsVM'
-  scope: existingAppsVM
-  properties: {
-    workspaceId: hubLaw.id
-    metrics: [{ category: 'AllMetrics', enabled: true, retentionPolicy: { enabled: false, days: 0 } }]
+  params: {
+    vmName: 'AppsVM'
+    logAnalyticsWorkspaceId: hubLaw.id
   }
   dependsOn: [spokeVM]
 }
 
 var linuxVMName = 'AppsLinuxVM${take(uniqueString(spokeVmRgName), 4)}'
-resource existingLinuxVM 'Microsoft.Compute/virtualMachines@2024-07-01' existing = if (deployVM && deployLinuxVM) {
-  name: linuxVMName
+module linuxVMDiag '../../modules/apps/vmDiag.bicep' = if (deployVM && deployLinuxVM) {
+  name: 'LinuxVMDiag'
   scope: resourceGroup(spokeSubId, vmRGroup.name)
-}
-resource linuxVMDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (deployVM && deployLinuxVM) {
-  name: 'diag-${linuxVMName}'
-  scope: existingLinuxVM
-  properties: {
-    workspaceId: hubLaw.id
-    metrics: [{ category: 'AllMetrics', enabled: true, retentionPolicy: { enabled: false, days: 0 } }]
+  params: {
+    vmName: linuxVMName
+    logAnalyticsWorkspaceId: hubLaw.id
   }
   dependsOn: [linuxVM]
 }
 
-resource existingSQLVM 'Microsoft.Compute/virtualMachines@2024-07-01' existing = if (deploySQLVM) {
-  name: 'AppsSQLVM'
+module sqlVMDiag '../../modules/apps/vmDiag.bicep' = if (deploySQLVM) {
+  name: 'SQLVMDiag'
   scope: resourceGroup(spokeSubId, sqlVmRGroup.name)
-}
-resource sqlVMDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (deploySQLVM) {
-  name: 'diag-AppsSQLVM'
-  scope: existingSQLVM
-  properties: {
-    workspaceId: hubLaw.id
-    metrics: [{ category: 'AllMetrics', enabled: true, retentionPolicy: { enabled: false, days: 0 } }]
+  params: {
+    vmName: 'AppsSQLVM'
+    logAnalyticsWorkspaceId: hubLaw.id
   }
   dependsOn: [sqlVM]
 }
