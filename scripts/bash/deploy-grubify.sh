@@ -107,6 +107,7 @@ DEPLOY_CMD=(
       accessKey="$ACCESS_KEY"
       sshPublicKey="$SSH_PUB_KEY"
       deployGrubify=true
+      acrLoginServer="$ACR_SERVER"
       grubifyApiImage="$API_IMAGE"
       grubifyFrontendImage="$FRONTEND_IMAGE"
       appInsightsConnectionString="$APPI_CONN"

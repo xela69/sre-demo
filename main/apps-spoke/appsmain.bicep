@@ -488,6 +488,11 @@ param grubifyFrontendImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 @description('App Insights connection string from hub (injected at deploy time).')
 @secure()
 param appInsightsConnectionString string = ''
+@description('ACR login server (e.g. xelaacr1234.azurecr.io). Pass explicitly to avoid ARM reference() in image strings failing preflight validation.')
+param acrLoginServer string = ''
+
+// Resolved at template level: use explicit param when provided, otherwise fall back to hubAcr reference.
+var resolvedAcrServer = empty(acrLoginServer) ? hubAcr.properties.loginServer : acrLoginServer
 
 resource containerRGroup 'Microsoft.Resources/resourceGroups@2024-11-01' = if (deployContainerApp) {
   name: spokeContainerRgName
@@ -510,12 +515,12 @@ module containerApp '../../modules/apps/containerApp.bicep' = if (deployContaine
     location: spokeLocation
     containerAppName: deployGrubify ? 'grubify-api' : 'xela${take(uniqueString(spokeContainerRgName), 4)}'
     containerAppEnvName: 'grubify-env'
-    acrLoginServer: hubAcr.properties.loginServer
+    acrLoginServer: resolvedAcrServer
     managedIdentityId: hubAcrIdentity.id
     logAnalyticsWorkspaceId: hubLaw.id
     natPublicIP: natPublicIP
     containerImage: deployGrubify
-      ? '${hubAcr.properties.loginServer}/${grubifyApiImage}'
+      ? '${resolvedAcrServer}/${grubifyApiImage}'
       : 'mcr.microsoft.com/k8se/quickstart:latest'
   }
 }
@@ -533,9 +538,9 @@ module grubifyFrontend '../../modules/apps/grubifyFrontend.bicep' = if (deployCo
   params: {
     location: spokeLocation
     containerAppEnvResourceId: grubifyEnv.id
-    acrLoginServer: hubAcr.properties.loginServer
+    acrLoginServer: resolvedAcrServer
     managedIdentityId: hubAcrIdentity.id
-    frontendImage: '${hubAcr.properties.loginServer}/${grubifyFrontendImage}'
+    frontendImage: '${resolvedAcrServer}/${grubifyFrontendImage}'
     apiUrl: containerApp!.outputs.containerAppFqdn
     appInsightsConnectionString: appInsightsConnectionString
     logAnalyticsWorkspaceId: hubLaw.id
