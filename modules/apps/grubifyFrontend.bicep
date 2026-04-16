@@ -67,7 +67,7 @@ module frontendApp 'br/public:avm/res/app/container-app:0.22.0' = {
           memory: '1.0Gi'
         }
         env: concat(
-          empty(apiUrl) ? [] : [{ name: 'REACT_APP_API_URL', value: 'https://${apiUrl}' }],
+          empty(apiUrl) ? [] : [{ name: 'REACT_APP_API_BASE_URL', value: 'https://${apiUrl}/api' }],
           empty(appInsightsConnectionString)
             ? []
             : [
