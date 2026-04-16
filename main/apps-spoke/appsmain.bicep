@@ -514,7 +514,7 @@ module sqlVMDiag '../../modules/apps/vmDiag.bicep' = if (deploySQLVM) {
 param spokeContainerRgName string = 'AppsRG-ContainerApp'
 
 // ── Grubify: set deployGrubify=true once images are pushed to ACR ──
-param deployGrubify bool = false
+param deployGrubify bool = true
 @description('Grubify API image tag in hub ACR (e.g. grubify-api:latest). Leave default until image is built.')
 param grubifyApiImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 @description('Grubify frontend image tag in hub ACR (e.g. grubify-frontend:latest). Leave default until image is built.')
@@ -574,7 +574,9 @@ module grubifyFrontend '../../modules/apps/grubifyFrontend.bicep' = if (deployCo
     containerAppEnvResourceId: grubifyEnv.id
     acrLoginServer: resolvedAcrServer
     managedIdentityId: hubAcrIdentity.id
-    frontendImage: '${resolvedAcrServer}/${grubifyFrontendImage}'
+    frontendImage: empty(grubifyFrontendImage) || grubifyFrontendImage == 'mcr.microsoft.com/k8se/quickstart:latest'
+      ? grubifyFrontendImage
+      : '${resolvedAcrServer}/${grubifyFrontendImage}'
     apiUrl: containerApp!.outputs.containerAppFqdn
     appInsightsConnectionString: appInsightsConnectionString
     logAnalyticsWorkspaceId: hubLaw.id
