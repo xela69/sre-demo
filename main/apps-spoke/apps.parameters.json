@@ -1,0 +1,66 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "spokeLocation": {
+      "value": "centralus"
+    },
+    "spokeRgName": {
+      "value": "AppsRG"
+    },
+    "spokeVmRgName": {
+      "value": "AppsRG-VM"
+    },
+    "spokeVnetName": {
+      "value": "AppsRG-VNet"
+    },
+    "spokeStorageRgName": {
+      "value": "AppsRG-Storage"
+    },
+    "spokeSqlVmRgName": {
+      "value": "AppsRG-SQL"
+    },
+    "spokeContainerRgName": {
+      "value": "AppsRG-ContainerApp"
+    },
+    "spokeAddressSpace": {
+      "value": "10.52.0.0/20"
+    },
+    "spokeSubId": {
+      "value": "42021d44-97d2-47a1-8245-a77149dda4c3"
+    },
+    "hubVnetName": {
+      "value": "hubRG-VNet"
+    },
+    "hubVnetResourceGroup": {
+      "value": "hubRG"
+    },
+    "hubVnetSubscriptionId": {
+      "value": "ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9"
+    },
+    "deploySpokeVnet": {
+      "value": true
+    },
+    "deployVM": {
+      "value": true
+    },
+    "deployLinuxVM": {
+      "value": true
+    },
+    "deployStorage": {
+      "value": true
+    },
+    "deploySQLVM": {
+      "value": true
+    },
+    "deployContainerApp": {
+      "value": true
+    },
+    "deployGrubify": {
+      "value": true
+    },
+    "enableVmInsightsPerfDcr": {
+      "value": true
+    }
+  }
+}

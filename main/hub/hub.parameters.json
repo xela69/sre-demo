@@ -12,10 +12,10 @@
       "value": "hubRG-VNet"
     },
     "hubAddressSpace": {
-      "value": "10.0.0.0/20"
+      "value": "10.50.0.0/20"
     },
     "firewallPrivateIP": {
-      "value": "10.0.4.4"
+      "value": "10.50.4.4"
     },
     "deployHubVnet": {
       "value": true
