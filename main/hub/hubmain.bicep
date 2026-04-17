@@ -9,8 +9,8 @@ param deployStorage bool = true
 param deployVM bool = true // Toggle to deploy Hub VM
 param enableVmInsightsPerfDcr bool = true // Optional: deploy a perf-focused DCR for VM Insights detailed metrics
 param deployBastion bool = false // Toggle to deploy Bastion Host
-param deployVpnGw bool = false // Toggle to deploy VPN Gateway
-param deployFirewall bool = false // Toggle to deploy Azure Firewall
+param deployVpnGw bool = true // Toggle to deploy VPN Gateway
+param deployFirewall bool = true // Toggle to deploy Azure Firewall
 // ── Spoke peering toggles — enable once spoke VNets are deployed ──
 param peerAppsSpoke bool = true // apps spoke (42021d44 / AppsRG)
 // param peerDcSpoke   bool = false  // dc spoke   — uncomment when ready
