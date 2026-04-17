@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# fw-stop.azcli — Deallocate Azure Firewall to stop compute billing
+# Firewall Policy and Public IP are retained; all rules survive.
+# Re-run fw-start.azcli to bring it back up with the same config.
+#
+# Usage:
+#   bash fw-stop.azcli                        # uses defaults below
+#   FW_NAME=myfw RG=myRG bash fw-stop.azcli  # override via env vars
+
+set -euo pipefail
+
+# ── Config (override with env vars if needed) ──────────────────────────────
+FW_RG="${FW_RG:-hubRG-Security}"
+FW_NAME="${FW_NAME:-xelaAzFirewall}"
+# ───────────────────────────────────────────────────────────────────────────
+
+echo "==> Stopping Azure Firewall: $FW_NAME (RG: $FW_RG)"
+echo "    Billing for compute will stop. Public IP and Firewall Policy are retained."
+
+# Confirm firewall exists
+az network firewall show --resource-group "$FW_RG" --name "$FW_NAME" \
+  --query "{Name:name, ProvisioningState:provisioningState, ThreatIntelMode:threatIntelMode}" \
+  -o table
+
+echo ""
+echo "==> Deallocating firewall (this takes ~3-5 minutes)..."
+
+az network firewall deallocate \
+  --resource-group "$FW_RG" \
+  --name "$FW_NAME"
+
+echo ""
+echo "==> Done. Firewall '$FW_NAME' is deallocated."
+echo "    Cost: Public IP (~\$0.005/hr) and Firewall Policy (~\$0.025/day) still apply."
+echo "    Run fw-start.azcli to bring it back up."

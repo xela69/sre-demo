@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# fw-start.azcli — Allocate (start) a previously deallocated Azure Firewall
+# Restores the firewall to the same VNet/subnet with the same public IP.
+# All rules and policies are preserved — no Bicep redeploy needed.
+#
+# Usage:
+#   bash fw-start.azcli                        # uses defaults below
+#   FW_NAME=myfw RG=myRG bash fw-start.azcli  # override via env vars
+
+set -euo pipefail
+
+# ── Config (override with env vars if needed) ──────────────────────────────
+FW_RG="${FW_RG:-hubRG-Security}"
+FW_NAME="${FW_NAME:-xelaAzFirewall}"
+HUB_RG="${HUB_RG:-hubRG}"
+VNET_NAME="${VNET_NAME:-hubRG-VNet}"
+PIP_NAME="${PIP_NAME:-xelaAzFirewall-fwIP}"
+# ───────────────────────────────────────────────────────────────────────────
+
+echo "==> Starting Azure Firewall: $FW_NAME (RG: $FW_RG)"
+echo "    VNet: $VNET_NAME (RG: $HUB_RG)"
+echo "    Public IP: $PIP_NAME"
+
+# Resolve Public IP resource ID
+PIP_ID=$(az network public-ip show \
+  --resource-group "$HUB_RG" \
+  --name "$PIP_NAME" \
+  --query id -o tsv)
+
+echo "    Public IP ID: $PIP_ID"
+echo ""
+echo "==> Allocating firewall (this takes ~5-10 minutes)..."
+
+az network firewall allocate \
+  --resource-group "$FW_RG" \
+  --name "$FW_NAME" \
+  --vnet-name "$VNET_NAME" \
+  --public-ip-address "$PIP_ID"
+
+echo ""
+echo "==> Firewall '$FW_NAME' is running."
+
+# Show new private IP (useful for UDR verification)
+az network firewall show \
+  --resource-group "$FW_RG" \
+  --name "$FW_NAME" \
+  --query "{Name:name, PrivateIP:ipConfigurations[0].privateIPAddress, ProvisioningState:provisioningState}" \
+  -o table
+
+echo ""
+echo "==> Tip: Verify UDRs still point to the firewall private IP (10.50.4.4)."
+echo "    If they drifted, re-run the Bicep hub deployment or update manually:"
+echo "    az network route-table route update --next-hop-ip-address 10.50.4.4 ..."
