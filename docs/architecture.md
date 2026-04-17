@@ -223,4 +223,128 @@ Summary:
 Method	Windows	macOS
 Web browser (portal)	✅	✅
 Portal "Download RDP file"	✅ (mstsc.exe)	❌
+
+---
+
+## Teardown & Rebuild — Preserving SRE Agent and Monitoring
+
+### Overview
+
+`hubRG-Monitor` is the **one resource group that must survive** across teardown/rebuild cycles.
+It holds the SRE agent endpoint, the managed identity it uses, and all shared monitoring
+infrastructure that both the hub and spoke deployments reference.
+
+### What Lives in `hubRG-Monitor`
+
+| Resource | Type | Purpose |
+|----------|------|---------|
+| `xelaLogsfhmo` | Log Analytics Workspace | Central diagnostics sink for all hub + spoke resources |
+| `VMInsights(xelaLogsfhmo)` | OM Solution | Powers VM Insights dashboards |
+| `MSVMI-xelaLogsfhmo` | Data Collection Rule | VM Insights map data (hub + spoke VMs) |
+| `MSVMI-Perf-xelaLogsfhmo` | Data Collection Rule | VM Insights perf counters (hub + spoke VMs) |
+| `xelaAppsInsightfhmo` | Application Insights | App-level telemetry |
+| `failure anomalies - xelaApps…` | Smart Detector Alert | App Insights anomaly detection |
+| `sre-demo-lklrj5pexwphm` | Managed Identity | SRE Agent identity (**CanNotDelete lock**) |
+| `sre-demo` | SRE Agent | SRE portal endpoint |
+| `containerApp` | Grafana Dashboard | Monitoring dashboards |
+| `xelaadxfhmo` | ADX (Kusto) Cluster | SRE analytics data store |
+
+### Why It Survives Safely
+
+1. **Idempotent resource creation** — `hubmain.bicep` declares `logsRGroup` as
+   `Microsoft.Resources/resourceGroups`. ARM treats this as create-or-update; an existing RG
+   is left untouched.
+
+2. **Deterministic naming** — All resource names are seeded with
+   `uniqueString('hubRG-Monitor')` → suffix `fhmo`. Redeployment targets the same resources
+   and updates in-place (PUT semantics).
+
+3. **CanNotDelete lock** — The SRE agent managed identity (`sre-demo-lklrj5pexwphm`) has a
+   `Microsoft.Authorization/locks` resource preventing accidental deletion. Deployed by
+   `modules/hub/monitor-diag.bicep` when `sreAgentIdentityName` is passed.
+
+4. **Cross-subscription `existing` references** — `appsmain.bicep` uses `existing` resource
+   declarations scoped to `hubRG-Monitor`. These resolve at deploy time against the preserved
+   resources:
+   ```bicep
+   resource hubLaw ... existing = {
+     name: 'xelaLogs${take(uniqueString('hubRG-Monitor'), 4)}'
+     scope: resourceGroup(hubVnetSubscriptionId, 'hubRG-Monitor')
+   }
+   ```
+
+### Wipe Procedure
+
+**Delete these resource groups** (hub subscription):
+
+```bash
+hubSubId="ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9"
+for rg in hubRG hubRG-VM hubRG-Security hubRG-Acr hubRG-Storage; do
+  az group delete -n "$rg" --subscription "$hubSubId" --yes --no-wait
+done
+```
+
+**Delete spoke resource groups** (apps subscription):
+
+```bash
+appsSubId="42021d44-97d2-47a1-8245-a77149dda4c3"
+for rg in AppsRG AppsRG-VM AppsRG-Storage AppsRG-SQL AppsRG-ContainerApp; do
+  az group delete -n "$rg" --subscription "$appsSubId" --yes --no-wait
+done
+```
+
+**DO NOT delete `hubRG-Monitor`.**
+
+### Redeploy Order
+
+```
+Step 1 — Hub (recreates hubRG, hubRG-Security, hubRG-VM, hubRG-Acr, hubRG-Storage)
+         hubRG-Monitor resources updated in-place via AVM PUT semantics.
+
+  az deployment sub create \
+    --subscription $hubSubId -l westus2 \
+    --template-file ./main/hub/hubmain.bicep \
+    --parameters natPublicIP=$(curl -4 -s ifconfig.me) \
+                 accessKey=$(cat ./docs/pwd.txt) \
+                 sshPublicKey="$(cat ~/.ssh/id_ed25519.pub)"
+
+Step 2 — Apps-Spoke (creates AppsRG, AppsRG-VM, etc.)
+         References hubRG-Monitor (LAW, DCRs) — already exist.
+         References hubRG-Security (identity) — recreated in step 1.
+         References hubRG-Acr (ACR) — recreated in step 1.
+
+  az deployment sub create \
+    --subscription $appsSubId -l centralus \
+    --template-file ./main/apps-spoke/appsmain.bicep \
+    --parameters accessKey=$(cat ./docs/pwd.txt) \
+                 sshPublicKey="$(cat ~/.ssh/id_ed25519.pub)"
+```
+
+### Critical Requirement
+
+`deploylogsAnalytics` must remain `true` (the default) in `hubmain.bicep`.
+Setting it to `false` will cause **all** modules that reference
+`logsAnalytics!.outputs.resourceId` to fail with a nullable-reference error,
+since the workspace output won't be emitted even though the resource exists.
+
+### Cross-RG Dependency Map
+
+```
+hubRG-Monitor (PRESERVED)
+  ├── referenced by hubmain.bicep modules:
+  │   ├── bastionHost        → diagnosticSettings.workspaceResourceId
+  │   ├── firewall            → logAnalyticsWorkspaceId
+  │   ├── keyVault            → diagnosticSettings.workspaceResourceId
+  │   ├── vpngw               → diagnosticSettings.workspaceResourceId
+  │   ├── storage             → diagnosticSettings.workspaceResourceId
+  │   ├── hubVM / linuxVM     → DCR associations (vmDataCollectionRule, vmPerfDataCollectionRule)
+  │   ├── networkDiag         → workspaceId
+  │   ├── vmDiag              → workspaceId
+  │   └── adxCluster          → diagnosticSettings.workspaceResourceId
+  │
+  └── referenced by appsmain.bicep (cross-subscription existing):
+      ├── hubLaw              → diagnostics for VNet, storage, VMs
+      ├── hubVmInsightsDcr    → AMA associations on spoke VMs
+      └── hubVmInsightsPerfDcr → AMA perf associations on spoke VMs
+```
 az network bastion tunnel + RDP client	✅	✅
