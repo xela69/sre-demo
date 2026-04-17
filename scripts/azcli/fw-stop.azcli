@@ -1,33 +1,112 @@
 #!/usr/bin/env bash
 # fw-stop.azcli — Deallocate Azure Firewall to stop compute billing
+# Uses az login token bridged into pwsh — no separate Connect-AzAccount needed.
 # Firewall Policy and Public IP are retained; all rules survive.
-# Re-run fw-start.azcli to bring it back up with the same config.
 #
 # Usage:
-#   bash fw-stop.azcli                        # uses defaults below
-#   FW_NAME=myfw RG=myRG bash fw-stop.azcli  # override via env vars
+#   bash fw-stop.azcli                              # uses defaults below
+#   FW_NAME=myfw FW_RG=myRG bash fw-stop.azcli     # override via env vars
 
 set -euo pipefail
 
 # ── Config (override with env vars if needed) ──────────────────────────────
-FW_RG="${FW_RG:-hubRG-Security}"
+HUB_SUB="${HUB_SUB:-ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9}"  # Infra-hub
+FW_RG="${FW_RG:-hubRG}"
 FW_NAME="${FW_NAME:-xelaAzFirewall}"
 # ───────────────────────────────────────────────────────────────────────────
 
-echo "==> Stopping Azure Firewall: $FW_NAME (RG: $FW_RG)"
-echo "    Billing for compute will stop. Public IP and Firewall Policy are retained."
+echo "==> Switching to hub subscription ($HUB_SUB)..."
+az account set --subscription "$HUB_SUB"
 
-# Confirm firewall exists
-az network firewall show --resource-group "$FW_RG" --name "$FW_NAME" \
-  --query "{Name:name, ProvisioningState:provisioningState, ThreatIntelMode:threatIntelMode}" \
-  -o table
+echo "==> Stopping Azure Firewall: $FW_NAME (RG: $FW_RG)"
+echo "    Compute billing stops. Public IP and Policy are retained."
+echo ""
+
+STATE=$(az network firewall show --resource-group "$FW_RG" --name "$FW_NAME" \
+  --query "provisioningState" -o tsv)
+echo "    Current state: $STATE"
+echo ""
+
+echo "==> Sending deallocate via PowerShell SDK (takes ~5 min)..."
+ACCOUNT=$(az account show --query user.name -o tsv)
+
+pwsh -NoLogo -NonInteractive -Command "
+  # Fetch fresh token inside pwsh right before use
+  \$t = (az account get-access-token --subscription '$HUB_SUB' | ConvertFrom-Json).accessToken
+  Connect-AzAccount -AccessToken \$t -AccountId '$ACCOUNT' -SubscriptionId '$HUB_SUB' | Out-Null
+  \$fw = Get-AzFirewall -Name '$FW_NAME' -ResourceGroupName '$FW_RG'
+  Write-Host \"    Current state: \$(\$fw.ProvisioningState), IP configs: \$(\$fw.IpConfigurations.Count)\"
+  \$fw.Deallocate()
+  # Refresh token again right before the long PUT call
+  \$t2 = (az account get-access-token --subscription '$HUB_SUB' | ConvertFrom-Json).accessToken
+  Disconnect-AzAccount -Scope CurrentUser | Out-Null
+  Connect-AzAccount -AccessToken \$t2 -AccountId '$ACCOUNT' -SubscriptionId '$HUB_SUB' | Out-Null
+  Write-Host 'Sending deallocate PUT...'
+  Set-AzFirewall -AzureFirewall \$fw | Out-Null
+  Write-Host 'Deallocate request sent.'
+"
 
 echo ""
-echo "==> Deallocating firewall (this takes ~3-5 minutes)..."
+echo "==> Polling until complete..."
+for i in $(seq 1 30); do
+  sleep 20
+  RESULT=$(az network firewall show --resource-group "$FW_RG" --name "$FW_NAME" \
+    --query "{s:provisioningState,c:length(ipConfigurations)}" -o tsv 2>/dev/null || echo "unknown 0")
+  echo "    [${i}0s] $RESULT"
+  echo "$RESULT" | grep -q "^Succeeded" && break
+done
 
-az network firewall deallocate \
-  --resource-group "$FW_RG" \
-  --name "$FW_NAME"
+echo ""
+echo "==> Done. Firewall '$FW_NAME' is deallocated."
+echo "    Cost: Public IP (~\$0.005/hr) and Firewall Policy (~\$0.025/day) still apply."
+echo "    Run fw-start.azcli to bring it back up."
+
+set -euo pipefail
+
+# ── Config (override with env vars if needed) ──────────────────────────────
+HUB_SUB="${HUB_SUB:-ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9}"  # Infra-hub
+FW_RG="${FW_RG:-hubRG}"
+FW_NAME="${FW_NAME:-xelaAzFirewall}"
+API_VER="2024-05-01"
+# ───────────────────────────────────────────────────────────────────────────
+
+echo "==> Switching to hub subscription ($HUB_SUB)..."
+az account set --subscription "$HUB_SUB"
+
+echo "==> Stopping Azure Firewall: $FW_NAME (RG: $FW_RG)"
+echo "    Compute billing stops. Public IP and Policy are retained."
+echo ""
+
+# Confirm current state
+STATE=$(az network firewall show \
+  --resource-group "$FW_RG" --name "$FW_NAME" \
+  --query "provisioningState" -o tsv)
+echo "    Current provisioning state: $STATE"
+echo ""
+
+# POST deallocate via ARM REST API (long-running operation)
+URI="/subscriptions/${HUB_SUB}/resourceGroups/${FW_RG}/providers/Microsoft.Network/azureFirewalls/${FW_NAME}/deallocate?api-version=${API_VER}"
+
+echo "==> Sending deallocate request (this takes ~3-5 minutes)..."
+az rest \
+  --method POST \
+  --uri "$URI" \
+  --verbose 2>&1 | grep -E 'Response status|Location|Retry' || true
+
+echo ""
+echo "==> Deallocate request accepted. Polling until complete..."
+
+# Poll until state is not Updating/Deleting
+for i in $(seq 1 30); do
+  sleep 20
+  STATE=$(az network firewall show \
+    --resource-group "$FW_RG" --name "$FW_NAME" \
+    --query "provisioningState" -o tsv 2>/dev/null || echo "unknown")
+  echo "    [$((i*20))s] State: $STATE"
+  if [[ "$STATE" == "Succeeded" || "$STATE" == "Stopped" ]]; then
+    break
+  fi
+done
 
 echo ""
 echo "==> Done. Firewall '$FW_NAME' is deallocated."

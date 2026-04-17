@@ -1,53 +1,146 @@
 #!/usr/bin/env bash
 # fw-start.azcli — Allocate (start) a previously deallocated Azure Firewall
-# Restores the firewall to the same VNet/subnet with the same public IP.
+# Uses az login token bridged into pwsh — no separate Connect-AzAccount needed.
 # All rules and policies are preserved — no Bicep redeploy needed.
 #
 # Usage:
-#   bash fw-start.azcli                        # uses defaults below
-#   FW_NAME=myfw RG=myRG bash fw-start.azcli  # override via env vars
+#   bash fw-start.azcli                              # uses defaults below
+#   FW_NAME=myfw FW_RG=myRG bash fw-start.azcli     # override via env vars
 
 set -euo pipefail
 
 # ── Config (override with env vars if needed) ──────────────────────────────
-FW_RG="${FW_RG:-hubRG-Security}"
+HUB_SUB="${HUB_SUB:-ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9}"  # Infra-hub
+FW_RG="${FW_RG:-hubRG}"
 FW_NAME="${FW_NAME:-xelaAzFirewall}"
 HUB_RG="${HUB_RG:-hubRG}"
 VNET_NAME="${VNET_NAME:-hubRG-VNet}"
 PIP_NAME="${PIP_NAME:-xelaAzFirewall-fwIP}"
 # ───────────────────────────────────────────────────────────────────────────
 
-echo "==> Starting Azure Firewall: $FW_NAME (RG: $FW_RG)"
-echo "    VNet: $VNET_NAME (RG: $HUB_RG)"
-echo "    Public IP: $PIP_NAME"
+echo "==> Switching to hub subscription ($HUB_SUB)..."
+az account set --subscription "$HUB_SUB"
 
-# Resolve Public IP resource ID
-PIP_ID=$(az network public-ip show \
-  --resource-group "$HUB_RG" \
-  --name "$PIP_NAME" \
+echo "==> Starting Azure Firewall: $FW_NAME (RG: $FW_RG)"
+echo "    VNet: $VNET_NAME | Public IP: $PIP_NAME"
+echo ""
+
+echo "==> Sending allocate via PowerShell SDK (takes ~5-10 min)..."
+ACCOUNT=$(az account show --query user.name -o tsv)
+
+pwsh -NoLogo -NonInteractive -Command "
+  # Fetch fresh token inside pwsh right before use
+  \$t = (az account get-access-token --subscription '$HUB_SUB' | ConvertFrom-Json).accessToken
+  Connect-AzAccount -AccessToken \$t -AccountId '$ACCOUNT' -SubscriptionId '$HUB_SUB' | Out-Null
+  \$fw   = Get-AzFirewall -Name '$FW_NAME' -ResourceGroupName '$FW_RG'
+  \$vnet = Get-AzVirtualNetwork -Name '$VNET_NAME' -ResourceGroupName '$HUB_RG'
+  \$pip  = Get-AzPublicIpAddress -Name '$PIP_NAME' -ResourceGroupName '$HUB_RG'
+  Write-Host \"    Public IP: \$(\$pip.IpAddress)\"
+  \$fw.Allocate(\$vnet, @(\$pip))
+  # Refresh token again right before the long PUT call
+  \$t2 = (az account get-access-token --subscription '$HUB_SUB' | ConvertFrom-Json).accessToken
+  Disconnect-AzAccount -Scope CurrentUser | Out-Null
+  Connect-AzAccount -AccessToken \$t2 -AccountId '$ACCOUNT' -SubscriptionId '$HUB_SUB' | Out-Null
+  Write-Host 'Sending allocate PUT...'
+  Set-AzFirewall -AzureFirewall \$fw | Out-Null
+  Write-Host 'Allocate request sent.'
+"
+
+echo ""
+echo "==> Polling until complete..."
+for i in $(seq 1 40); do
+  sleep 20
+  RESULT=$(az network firewall show --resource-group "$FW_RG" --name "$FW_NAME" \
+    --query "{s:provisioningState,ip:ipConfigurations[0].privateIPAddress}" -o tsv 2>/dev/null || echo "unknown -")
+  echo "    [${i}0s] $RESULT"
+  echo "$RESULT" | grep -q "^Succeeded" && break
+done
+
+echo ""
+PRIVATE_IP=$(az network firewall show --resource-group "$FW_RG" --name "$FW_NAME" \
+  --query "ipConfigurations[0].privateIPAddress" -o tsv 2>/dev/null || echo "unknown")
+echo "==> Firewall '$FW_NAME' is running. Private IP: $PRIVATE_IP"
+echo "    Verify UDRs still point to 10.50.4.4."
+
+set -euo pipefail
+
+# ── Config (override with env vars if needed) ──────────────────────────────
+HUB_SUB="${HUB_SUB:-ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9}"  # Infra-hub
+FW_RG="${FW_RG:-hubRG}"
+FW_NAME="${FW_NAME:-xelaAzFirewall}"
+HUB_RG="${HUB_RG:-hubRG}"
+VNET_NAME="${VNET_NAME:-hubRG-VNet}"
+PIP_NAME="${PIP_NAME:-xelaAzFirewall-fwIP}"
+API_VER="2024-05-01"
+# ───────────────────────────────────────────────────────────────────────────
+
+echo "==> Switching to hub subscription ($HUB_SUB)..."
+az account set --subscription "$HUB_SUB"
+
+echo "==> Starting Azure Firewall: $FW_NAME (RG: $FW_RG)"
+echo "    VNet: $VNET_NAME | Public IP: $PIP_NAME"
+echo ""
+
+# Resolve resource IDs
+VNET_ID=$(az network vnet show \
+  --resource-group "$HUB_RG" --name "$VNET_NAME" \
   --query id -o tsv)
 
-echo "    Public IP ID: $PIP_ID"
+PIP_ID=$(az network public-ip show \
+  --resource-group "$HUB_RG" --name "$PIP_NAME" \
+  --query id -o tsv)
+
+SUBNET_ID="${VNET_ID}/subnets/AzureFirewallSubnet"
+
+echo "    Public IP ID : $PIP_ID"
+echo "    Subnet ID    : $SUBNET_ID"
 echo ""
-echo "==> Allocating firewall (this takes ~5-10 minutes)..."
 
-az network firewall allocate \
-  --resource-group "$FW_RG" \
-  --name "$FW_NAME" \
-  --vnet-name "$VNET_NAME" \
-  --public-ip-address "$PIP_ID"
+# Build allocate payload
+PAYLOAD=$(cat <<EOF
+{
+  "ipConfigurations": [
+    {
+      "name": "IpConf",
+      "properties": {
+        "subnet": { "id": "$SUBNET_ID" },
+        "publicIPAddress": { "id": "$PIP_ID" }
+      }
+    }
+  ]
+}
+EOF
+)
+
+# POST allocate via ARM REST API
+URI="/subscriptions/${HUB_SUB}/resourceGroups/${FW_RG}/providers/Microsoft.Network/azureFirewalls/${FW_NAME}/allocate?api-version=${API_VER}"
+
+echo "==> Sending allocate request (this takes ~5-10 minutes)..."
+az rest \
+  --method POST \
+  --uri "$URI" \
+  --body "$PAYLOAD" \
+  --verbose 2>&1 | grep -E 'Response status|Location|Retry' || true
 
 echo ""
-echo "==> Firewall '$FW_NAME' is running."
+echo "==> Allocate request accepted. Polling until complete..."
 
-# Show new private IP (useful for UDR verification)
-az network firewall show \
-  --resource-group "$FW_RG" \
-  --name "$FW_NAME" \
-  --query "{Name:name, PrivateIP:ipConfigurations[0].privateIPAddress, ProvisioningState:provisioningState}" \
-  -o table
+# Poll until Succeeded
+for i in $(seq 1 40); do
+  sleep 20
+  STATE=$(az network firewall show \
+    --resource-group "$FW_RG" --name "$FW_NAME" \
+    --query "provisioningState" -o tsv 2>/dev/null || echo "unknown")
+  echo "    [$((i*20))s] State: $STATE"
+  if [[ "$STATE" == "Succeeded" ]]; then
+    break
+  fi
+done
 
 echo ""
-echo "==> Tip: Verify UDRs still point to the firewall private IP (10.50.4.4)."
-echo "    If they drifted, re-run the Bicep hub deployment or update manually:"
-echo "    az network route-table route update --next-hop-ip-address 10.50.4.4 ..."
+PRIVATE_IP=$(az network firewall show \
+  --resource-group "$FW_RG" --name "$FW_NAME" \
+  --query "ipConfigurations[0].privateIPAddress" -o tsv 2>/dev/null || echo "unknown")
+
+echo "==> Firewall '$FW_NAME' is running. Private IP: $PRIVATE_IP"
+echo "    Verify UDRs still point to 10.50.4.4 (expected private IP)."
