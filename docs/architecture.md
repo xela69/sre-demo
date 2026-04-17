@@ -347,4 +347,118 @@ hubRG-Monitor (PRESERVED)
       ├── hubVmInsightsDcr    → AMA associations on spoke VMs
       └── hubVmInsightsPerfDcr → AMA perf associations on spoke VMs
 ```
+
+---
+
+## SRE Agent — Deletion and Recreation
+
+### What the Portal Creates (Outside Bicep)
+
+The `sre-demo` agent resource lives at **sre.azure.com** and is provisioned by the SRE portal
+wizard — not by Bicep. When the agent is created, the portal automatically provisions:
+
+| Resource | Location | Managed by |
+|----------|----------|------------|
+| `sre-demo` agent endpoint | sre.azure.com portal | Portal only |
+| `sre-demo-<suffix>` managed identity | `hubRG-Monitor` | Portal (Bicep adds lock) |
+| Log Analytics Workspace | `hubRG-Monitor` | Bicep (`hubmain.bicep`) |
+| Application Insights | `hubRG-Monitor` | Bicep (`hubmain.bicep`) |
+| ADX `AllDatabasesViewer` RBAC | `xelaadxfhmo` cluster | Bicep (`hubmain.bicep`) |
+
+### What Is Lost When the Agent Is Deleted
+
+Deleting the agent from sre.azure.com is **irreversible** for the following:
+
+| Lost Item | Recovery Path |
+|-----------|--------------|
+| Agent portal resource (`sre-demo`) | Re-run wizard at sre.azure.com (~2-5 min) |
+| Managed identity — **new** principal ID issued | Run `sre-agent-rewire.sh` to re-wire ADX RBAC |
+| Azure resource Reader RBAC (3 subscriptions) | Portal setup wizard re-grants during onboarding |
+| ADX connector config | Manual — Builder > Connectors > Add ADX |
+| GitHub OAuth connector | Manual — Builder > Connectors > re-authenticate |
+| Runbooks / response plans / scheduled tasks | Manual — no export/import API available |
+| Accumulated agent memory and knowledge | Permanent loss — cannot be restored |
+
+> **Billing note:** The always-on fixed cost ($0.40/hr) stops **only** on deletion. Stopping
+> the agent pauses active flow but the fixed charge continues. Delete to stop all billing.
+
+### Recovery Scripts
+
+Two scripts in `scripts/azcli/` automate the Bicep-recoverable parts:
+
+#### `sre-agent-snapshot.sh` — run BEFORE deleting the agent
+
+Reads the current managed identity from `hubRG-Monitor` and writes
+`docs/sre-agent-config.txt` for reference during recovery.
+
+```bash
+./scripts/azcli/sre-agent-snapshot.sh
+# Output: docs/sre-agent-config.txt
+#   sreAgentIdentityName=sre-demo-lklrj5pexwphm
+#   sreAgentPrincipalId=<objectId>
+```
+
+Commit or back up `docs/sre-agent-config.txt` before deleting.
+
+#### `sre-agent-rewire.sh` — run AFTER recreating the agent at sre.azure.com
+
+Auto-discovers the new managed identity, updates `docs/sre-agent-config.txt`, then
+redeploys `hubmain.bicep` to place the `CanNotDelete` lock and restore the ADX
+`AllDatabasesViewer` RBAC assignment for the new principal ID.
+
+```bash
+./scripts/azcli/sre-agent-rewire.sh --dry-run   # preview
+./scripts/azcli/sre-agent-rewire.sh              # apply
+```
+
+### Full Recovery Procedure
+
+```
+Step 0 — Snapshot BEFORE deleting (one-time)
+  ./scripts/azcli/sre-agent-snapshot.sh
+
+Step 1 — Delete agent at sre.azure.com (Settings > Basics > Delete agent)
+         All billing stops immediately.
+
+Step 2 — Recreate agent at sre.azure.com (wizard, ~2-5 min)
+         Name:         sre-demo
+         Subscription: ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9
+         Region:       West US 2
+         Model:        Anthropic (Claude)
+         App Insights: use existing xelaAppsInsightfhmo in hubRG-Monitor
+
+Step 3 — Rewire infrastructure (Bicep-managed)
+  ./scripts/azcli/sre-agent-rewire.sh
+  → Discovers new managed identity name + principalId
+  → Updates docs/sre-agent-config.txt
+  → Redeploys hubmain.bicep with sreAgentIdentityName + sreAgentPrincipalId
+
+Step 4 — Restore connectors (portal only — no API)
+  sre.azure.com → Builder > Connectors:
+  a. Azure Data Explorer
+       Cluster URI : https://xelaadxfhmo.westus2.kusto.windows.net
+       Database    : sredb
+  b. GitHub OAuth  → re-authenticate
+
+Step 5 — Grant Azure resource access (portal)
+  sre.azure.com → Setup > Azure Resources:
+  a. Hub sub  : ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9
+  b. Apps sub : 42021d44-97d2-47a1-8245-a77149dda4c3
+  c. Data sub : 8de6c6e8-53af-4ded-a480-fd20c6093e78
+
+Step 6 — Re-create runbooks, response plans, and scheduled tasks manually.
+```
+
+### Recoverable vs. Manual Summary
+
+| Item | Automated | Tool |
+|------|-----------|------|
+| Monitoring (LAW, DCRs, App Insights) | ✅ | `hubmain.bicep` (idempotent) |
+| Identity `CanNotDelete` lock | ✅ | `sre-agent-rewire.sh` → Bicep |
+| ADX `AllDatabasesViewer` RBAC | ✅ | `sre-agent-rewire.sh` → Bicep |
+| Agent portal resource | ❌ | sre.azure.com wizard |
+| ADX / GitHub connectors | ❌ | Portal — Builder > Connectors |
+| Azure resource RBAC (3 subs) | ❌ | Portal — Setup > Azure Resources |
+| Runbooks / response plans / memory | ❌ | Manual recreation |
+
 az network bastion tunnel + RDP client	✅	✅
