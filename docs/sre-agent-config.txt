@@ -1,2 +1,2 @@
-sreAgentIdentityName=
-sreAgentPrincipalId=
+sreAgentIdentityName=sre-demo-lklrj5pexwphm
+sreAgentPrincipalId=e15b1db6-a32d-460a-b8a8-9c4e51446305
