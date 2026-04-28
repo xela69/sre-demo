@@ -3,7 +3,7 @@ set -euo pipefail
 
 # ── Resource groups to NEVER delete ──
 SKIP_RGS=(
-  "hubRG-Monitor"
+  "NetworkWatcherRG"
   # Add any other platform / shared RGs here
 )
 
