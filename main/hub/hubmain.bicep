@@ -18,7 +18,7 @@ param peerAppsSpoke bool = true // apps spoke (42021d44 / AppsRG)
 // ── Azure Data Explorer (Kusto) cluster for SRE analytics ──
 param deployAdx bool = true // Toggle to deploy Azure Data Explorer cluster
 @description('Optional principal ID of the SRE Agent managed identity for Kusto RBAC. Leave empty to skip the cluster viewer assignment.')
-param sreAgentPrincipalId string = ''
+param sreAgentPrincipalId string = '' 
 
 param natPublicIP string //injected securely from main.bicep for NAT testing
 param accessKey string

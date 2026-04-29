@@ -57,7 +57,7 @@ Custom modules kept where AVM replacement adds no value (complex UDR/peering/fir
 | Private DNS links | `modules/hub/privatednslinks.bicep` (custom - kept) | done |
 | DCR Association | `modules/hub/dcr-association.bicep` (custom - kept) | done |
 
----
+--- 
 
 ## VM Deployment (data-spoke)
 
