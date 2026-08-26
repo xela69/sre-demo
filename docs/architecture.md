@@ -33,6 +33,9 @@ dataSubId="8de6c6e8-53af-4ded-a480-fd20c6093e78"  # data-spoke subscription
 
 ## AVM Module Status (hub)
 
+Repository-wide AVM adoption and non-AVM review backlog:
+- See `docs/avm-module-review.md` for full inventory, conversion waves, and keep-custom decisions.
+
 All hub resources migrated to AVM in `main/hub/hubmain.bicep`.
 Custom modules kept where AVM replacement adds no value (complex UDR/peering/firewall policy logic).
 
