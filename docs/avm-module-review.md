@@ -5,10 +5,10 @@ Goal: Prefer Azure Verified Modules (AVM) wherever practical, and flag non-AVM m
 
 ## Summary
 
-- Total module invocations in Bicep: 59
-- AVM module invocations: 40
+- Total module invocations in Bicep: 60
+- AVM module invocations: 41
 - Non-AVM module invocations: 19
-- AVM adoption by invocation: 67.80%
+- AVM adoption by invocation: 68.33%
 
 ## Completed Conversions
 
@@ -21,6 +21,9 @@ Goal: Prefer Azure Verified Modules (AVM) wherever practical, and flag non-AVM m
 | 2026-09-03 | `modules/hub/vnet-peering.bicep` | Reviewed for AVM conversion; retained as custom because AVM peering support is embedded in the VNet module and would remove the isolated peering deployment boundary | `az bicep build --file main/hub/hubmain.bicep` |
 | 2026-09-03 | `modules/hub/monitor-diag.bicep` | Moved App Insights diagnostics into the AVM App Insights module; retained custom wrapper for DCR diagnostics and SRE identity lock | `az bicep build --file main/hub/hubmain.bicep` |
 | 2026-09-03 | `modules/hub/firewall-vnet.bicep` | Parameterized IP group lists, added optional zone parameters, fixed DNAT naming ambiguity, scoped route-table RBAC correctly, and converted the base Azure Firewall, Firewall Policy, and rule collection groups to AVM modules. The wrapper remains custom to preserve the demo firewall orchestration model. | `az bicep build --file main/hub/hubmain.bicep` |
+| 2026-09-03 | `modules/hub/privatednslinks.bicep` | Converted Private DNS zone and virtual network link creation to `br/public:avm/res/network/private-dns-zone:0.7.0` while retaining the wrapper for canonical zone list, cloud suffix normalization, and optional spoke link matrix. | `az bicep build --file main/hub/hubmain.bicep` |
+| 2026-09-03 | Diagnostic wrappers | Reviewed `modules/hub/network-diag.bicep`, `modules/hub/vm-diag.bicep`, and `modules/apps/vmDiag.bicep`; retained as custom because the current AVM VM and VPN connection modules do not expose diagnostic settings, and public IP conversion would remove an existing FQDN output dependency. | `az bicep build --file main/hub/hubmain.bicep`; `az bicep build --file main/apps-spoke/appsmain.bicep` |
+| 2026-09-03 | `modules/hub/failure-anomalies.bicep` | Reviewed for AVM conversion; retained as custom because no AVM module is available for `microsoft.alertsmanagement/smartdetectoralertrules`. Also note a legacy duplicate smart detector resource exists in `modules/hub/logsanalytics.bicep` if that old module is reused later. | `az bicep build --file main/hub/hubmain.bicep` |
 
 ## AVM-First Policy (for this repo)
 
@@ -39,12 +42,12 @@ Goal: Prefer Azure Verified Modules (AVM) wherever practical, and flag non-AVM m
 | ../../modules/spokes/spokevnets.bicep | 3 | Spoke VNet orchestration | Hybrid complete | Retain wrapper for stable spoke contract; internals now use AVM route table and AVM VNet modules | Low |
 | ../../modules/hub/vnet-peering.bicep | 1 | VNet peering logic | Keep custom | Retain custom module to preserve separate cross-subscription peering deployment and RBAC failure isolation | Low |
 | ../../modules/hub/firewall-vnet.bicep | 1 | Azure Firewall orchestration wrapper | Hybrid complete | Retain wrapper for DNS resolver, IP group, route RBAC, and firewall rule orchestration. Internals now use AVM for Azure Firewall, Firewall Policy, and rule collection groups. | Low |
-| ../../modules/hub/privatednslinks.bicep | 1 | Private DNS links orchestration | Likely yes | Review conversion to AVM/private DNS modules if parity exists | Medium |
-| ../../modules/hub/failure-anomalies.bicep | 1 | App Insights smart detection rules | Partial/uncertain | Keep custom for now; verify AVM coverage before migration | Medium |
+| ../../modules/hub/privatednslinks.bicep | 1 | Private DNS zone/link orchestration | Hybrid complete | Retain wrapper for canonical zone list and hub/spoke matrix; internals now use AVM Private DNS Zone module | Low |
+| ../../modules/hub/failure-anomalies.bicep | 1 | App Insights smart detection rules | Keep custom | Retain because no AVM smart detector alert rule module is available; this is already a small single-resource wrapper. | Low |
 | ../../modules/hub/monitor-diag.bicep | 1 | DCR diagnostics + SRE identity lock | Partial AVM reduction complete | Keep custom for DCR diagnostics and lock; App Insights diagnostics now live in AVM App Insights module | Low |
-| ../../modules/hub/network-diag.bicep | 1 | Network diagnostics settings | Partial | Consolidate into AVM-supported diagnostic settings where possible | Medium |
-| ../../modules/hub/vm-diag.bicep | 1 | VM diagnostics settings | Partial | Replace with AVM-supported diagnostics on VM modules where possible | Medium |
-| ../../modules/apps/vmDiag.bicep | 3 | App/SQL VM diagnostics wrapper | Partial | Replace wrapper with direct AVM diagnostics support if feasible | Medium |
+| ../../modules/hub/network-diag.bicep | 1 | Network diagnostics settings | Keep custom | Retain for VPN connection diagnostics and firewall public IP diagnostics. AVM connection lacks diagnostic settings; AVM public IP conversion would need extra work to preserve FQDN output behavior. | Low |
+| ../../modules/hub/vm-diag.bicep | 1 | VM/NIC diagnostics settings | Keep custom | Retain because AVM VM 0.9.0 does not expose diagnostic settings for VM/NIC host metrics. | Low |
+| ../../modules/apps/vmDiag.bicep | 3 | App/SQL VM diagnostics wrapper | Keep custom | Retain because AVM VM 0.9.0 does not expose diagnostic settings for VM host metrics. | Low |
 | ../../platform/identity/mgnt-Identity.bicep | 1 | Managed identity + role orchestration | Partial | Keep custom for orchestration; optionally use AVM for identity resource creation inside module | Low |
 | ./mg-policy.bicep | 1 | Management group policy orchestration | No direct one-size AVM fit | Keep custom; this is governance orchestration | Low |
 | ./subscription-baseline.bicep | 1 | Subscription baseline orchestration | No direct one-size AVM fit | Keep custom | Low |
@@ -59,10 +62,10 @@ Goal: Prefer Azure Verified Modules (AVM) wherever practical, and flag non-AVM m
 - Complete
 
 ### Wave 2 (Security/platform consistency)
-- privatednslinks.bicep
+- Complete
 
 ### Wave 3 (Reduce wrapper indirection)
-- apps/vmDiag.bicep and hub diag wrappers where AVM supports direct diagnostic settings
+- Complete
 
 ---
 

@@ -73,74 +73,46 @@ var dnsZones = [
   'privatelink.agentsvc.azure-automation.net'
 ]
 
-// Create the private DNS zones
-resource privateDnsZones 'Microsoft.Network/privateDnsZones@2024-06-01' = [
-  for zoneName in dnsZones: {
-    name: zoneName
-    location: location
-    tags: {
-      Service: 'DNS'
-      CostCenter: 'Infrastructure'
-      Environment: 'Production'
-      Owner: 'ArnoldP'
-      SecurityControl: 'Ignore'
-      CostControl: 'Ignore'
-    }
-  }
-]
-// Link hubVNet to each DNS zone
-resource hubDnsLinks 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = [
-  for (zoneName, i) in dnsZones: {
-    name: 'link-hub-to-${replace(zoneName, '.', '-')}' // stable name
-    parent: privateDnsZones[i]
-    location: 'global'
-    tags: {
-      Service: 'DNS'
-      CostCenter: 'Infrastructure'
-      Environment: 'Production'
-      Owner: 'ArnoldP'
-      SecurityControl: 'Ignore'
-      CostControl: 'Ignore'
-    }
-    properties: {
-      virtualNetwork: {
-        id: hubVnet.id
-      }
-      registrationEnabled: false
-      resolutionPolicy: 'NxDomainRedirect' // set to NxDomainRedirect to allow fallthrough to other zones
-    }
-  }
-]
 @description('Array of spoke virtual network resource IDs to link')
 param spokeVnetIds array = [
   '/subscriptions/86d55e1e-4ca9-4ddd-85df-2e7633d77534/resourceGroups/AppsRG/providers/Microsoft.Network/virtualNetworks/AppsRG-VNet'
   '/subscriptions/8cbc59b1-7d9e-4cf1-8851-58fffe68fb79/resourceGroups/DataRG/providers/Microsoft.Network/virtualNetworks/DataRG-VNet'
 ]
 param spokeVnetLinks bool = false
-// Link each spoke VNet to the DNS zones
-resource spokeDnsLinks 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = [
-  for i in range(0, length(dnsZones) * length(spokeVnetIds)): if (spokeVnetLinks) {
-    name: 'link-spoke-${i % length(spokeVnetIds)}-to-${replace(dnsZones[i / length(spokeVnetIds)], '.', '-')}'
-    parent: privateDnsZones[i / length(spokeVnetIds)]
-    location: 'global'
-    tags: {
-      Service: 'DNS'
-      CostCenter: 'Infrastructure'
-      Environment: 'Production'
-      Owner: 'ArnoldP'
-      SecurityControl: 'Ignore'
-      CostControl: 'Ignore'
-    }
-    properties: {
-      virtualNetwork: {
-        id: spokeVnetIds[i % length(spokeVnetIds)]
-      }
-      registrationEnabled: false
-      resolutionPolicy: 'NxDomainRedirect'
+
+var dnsTags = {
+  Service: 'DNS'
+  CostCenter: 'Infrastructure'
+  Environment: 'Production'
+  Owner: 'ArnoldP'
+  SecurityControl: 'Ignore'
+  CostControl: 'Ignore'
+}
+
+// Create the private DNS zones and links via AVM.
+module privateDnsZones 'br/public:avm/res/network/private-dns-zone:0.7.0' = [
+  for zoneName in dnsZones: {
+    name: take('pdns-${replace(zoneName, '.', '-')}', 64)
+    params: {
+      name: zoneName
+      location: location
+      tags: dnsTags
+      virtualNetworkLinks: [
+        for linkIndex in range(0, spokeVnetLinks ? length(spokeVnetIds) + 1 : 1): {
+          name: linkIndex == 0
+            ? 'link-hub-to-${replace(zoneName, '.', '-')}'
+            : 'link-spoke-${linkIndex - 1}-to-${replace(zoneName, '.', '-')}'
+          virtualNetworkResourceId: linkIndex == 0 ? hubVnet.id : spokeVnetIds[linkIndex - 1]
+          location: 'global'
+          registrationEnabled: false
+          resolutionPolicy: 'NxDomainRedirect'
+          tags: dnsTags
+        }
+      ]
     }
   }
 ]
 // Outputs
-output dnsZoneNames array = [for i in range(0, length(dnsZones)): privateDnsZones[i].name]
-output hubDnsLinkNames array = [for i in range(0, length(dnsZones)): hubDnsLinks[i].name]
-output dnsZoneIds array = [for i in range(0, length(dnsZones)): privateDnsZones[i].id]
+output dnsZoneNames array = [for i in range(0, length(dnsZones)): privateDnsZones[i].outputs.name]
+output hubDnsLinkNames array = [for zoneName in dnsZones: 'link-hub-to-${replace(zoneName, '.', '-')}']
+output dnsZoneIds array = [for i in range(0, length(dnsZones)): privateDnsZones[i].outputs.resourceId]

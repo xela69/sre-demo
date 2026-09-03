@@ -133,10 +133,10 @@ This environment can support several demos:
 
 Current AVM adoption is strong but incomplete:
 
-- 59 total Bicep module invocations
-- 40 AVM module invocations
+- 60 total Bicep module invocations
+- 41 AVM module invocations
 - 19 non-AVM module invocations
-- 67.80% AVM adoption by invocation
+- 68.33% AVM adoption by invocation
 
 Long-term recommendation: yes, it is worth converting toward AVM, but selectively.
 
@@ -164,6 +164,7 @@ Completed AVM cleanup:
 - `modules/spokes/spokevnets.bicep` retained as a stable wrapper; internals now use AVM Route Table and AVM Virtual Network modules.
 - `modules/hub/hubvnet.bicep` retained as a stable wrapper; internals now use AVM Route Table and AVM Virtual Network modules.
 - `modules/hub/firewall-vnet.bicep` retained as a firewall orchestration wrapper; base Azure Firewall, Firewall Policy, and rule collection groups now use AVM modules.
+- `modules/hub/privatednslinks.bicep` retained as a Private DNS orchestration wrapper; DNS zones and virtual network links now use AVM Private DNS Zone modules.
 
 Best modules to retain or convert hybrid:
 
