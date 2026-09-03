@@ -2,6 +2,7 @@
 	"chat.tools.terminal.autoApprove": {
 		"command": true,
 		"az": true,
-		"bicep": true
+		"bicep": true,
+		"printf": true
 	}
 }
