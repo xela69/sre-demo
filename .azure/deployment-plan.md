@@ -1,6 +1,6 @@
 # Azure Deployment Validation Plan
 
-**Status:** Ready for Validation
+**Status:** Validation Blocked
 **Mode:** Validate existing infrastructure orchestration
 **IaC:** Bicep
 **Execution boundary:** Compile, ARM validation, and what-if only. Do not deploy resources.
@@ -37,7 +37,28 @@ Post-deployment scripts are excluded because they mutate resources and are not A
 
 ## 4. Validation Proof
 
-Pending execution.
+Executed 2026-09-03 against MCAPS tenant `e2703bc7-74fd-40a0-8d0b-761571d44939` as `arnold@MngEnvMCAP833156.onmicrosoft.com`.
+
+All seven entry points compiled successfully. `platform/mngt/main.bicep` emitted two BCP318 warnings for conditional module output access; the other entry points emitted no compiler diagnostics.
+
+| Phase | ARM validation | What-if result | Notes |
+| --- | --- | --- | --- |
+| Tenant management | Blocked | Blocked | The principal lacks `Microsoft.Resources/deployments/validate/action` and `Microsoft.Resources/deployments/whatIf/action` at tenant scope `/`. It is Owner at the tenant-root management group, which is a different scope. |
+| Management-group policy | Passed | Passed: 0 changes | Evaluated at the existing `Infra-grp` management group. The checked-in policy parameters are empty. |
+| Platform identity | Passed | Passed: 8 creates | Evaluated in the Infra-hub subscription. |
+| Hub | Passed | Passed: 172 creates, 1 deploy, 14 unsupported | No deletes were reported. Unsupported means ARM could not calculate those resource changes, so they require review before deployment. |
+| Data spoke | Failed | Failed | Default configuration references the removed Tahubu `WS2012R2_SQL2014_Base/latest` community image. The gallery was unavailable in `westus3`, `northcentralus`, and `swedencentral`. With only `deployWinVM=false`, validation passed and what-if reported 19 creates and 2 unsupported changes. |
+| DC spoke | Passed | Passed: 0 changes | No changes were reported. |
+| Apps spoke | Passed | Passed: 52 creates, 2 unsupported | No deletes were reported. |
+
+Validation used `az deployment tenant|mg|sub validate` followed by the matching `what-if` command with `ResourceIdOnly` output. Required passwords and SSH keys were read from local secure inputs and were not printed or recorded.
+
+A static RBAC scan found role assignments scoped through the owning modules and using built-in role IDs or names. Provider validation passed for the policy, identity, hub, DC, and apps phases. No deployment or post-deployment command was executed.
+
+Blocking remediation:
+
+1. Grant the validating principal tenant-scope deployment permissions at `/`, or run the tenant phase with a principal that already has them.
+2. Replace the retired Tahubu image in the data-spoke legacy VM module, or explicitly approve `deployWinVM=false` as the supported deployment configuration.
 
 ## 5. Deployment
 
