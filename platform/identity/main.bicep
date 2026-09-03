@@ -63,7 +63,7 @@ module managedIdentities './mgnt-Identity.bicep' = if (deployManagedIdentities) 
   }
 }
 
-var managedIdentityMap = deployManagedIdentities ? managedIdentities.outputs.managedIdentityMap : {}
+var managedIdentityMap = deployManagedIdentities ? managedIdentities!.outputs.managedIdentityMap : {}
 
 output resourceGroupName string = identityResourceGroup.name
 output managedIdentities object = managedIdentityMap

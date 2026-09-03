@@ -105,67 +105,67 @@ resource acrIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-3
 var managedIdentities = {
   waf: createWaf
     ? {
-        id: wafIdentity.id
-        principalId: wafIdentity.properties.principalId
+        id: wafIdentity!.id
+        principalId: wafIdentity!.properties.principalId
       }
     : null
   firewall: createFirewall
     ? {
-        id: firewallIdentity.id
-        principalId: firewallIdentity.properties.principalId
+        id: firewallIdentity!.id
+        principalId: firewallIdentity!.properties.principalId
       }
     : null
   storage: createStorage
     ? {
-        id: storageIdentity.id
-        principalId: storageIdentity.properties.principalId
+        id: storageIdentity!.id
+        principalId: storageIdentity!.properties.principalId
       }
     : null
   keyVault: createKeyVault
     ? {
-        id: keyVaultIdentity.id
-        principalId: keyVaultIdentity.properties.principalId
+        id: keyVaultIdentity!.id
+        principalId: keyVaultIdentity!.properties.principalId
       }
     : null
   appService: createAppService
     ? {
-        id: appServiceIdentity.id
-        principalId: appServiceIdentity.properties.principalId
+        id: appServiceIdentity!.id
+        principalId: appServiceIdentity!.properties.principalId
       }
     : null
   vpnGateway: createVpnGateway
     ? {
-        id: vpnGatewayIdentity.id
-        principalId: vpnGatewayIdentity.properties.principalId
+        id: vpnGatewayIdentity!.id
+        principalId: vpnGatewayIdentity!.properties.principalId
       }
     : null
   acr: createAcr
     ? {
-        id: acrIdentity.id
-        principalId: acrIdentity.properties.principalId
+        id: acrIdentity!.id
+        principalId: acrIdentity!.properties.principalId
       }
     : null
 }
 
-output wafIdentityId string = createWaf ? wafIdentity.id : ''
-output wafPrincipalId string = createWaf ? wafIdentity.properties.principalId : ''
+output wafIdentityId string = createWaf ? wafIdentity!.id : ''
+output wafPrincipalId string = createWaf ? wafIdentity!.properties.principalId : ''
 
-output firewallIdentityId string = createFirewall ? firewallIdentity.id : ''
-output firewallPrincipalId string = createFirewall ? firewallIdentity.properties.principalId : ''
+output firewallIdentityId string = createFirewall ? firewallIdentity!.id : ''
+output firewallPrincipalId string = createFirewall ? firewallIdentity!.properties.principalId : ''
 
-output storageIdentityId string = createStorage ? storageIdentity.id : ''
-output storagePrincipalId string = createStorage ? storageIdentity.properties.principalId : ''
+output storageIdentityId string = createStorage ? storageIdentity!.id : ''
+output storagePrincipalId string = createStorage ? storageIdentity!.properties.principalId : ''
 
-output kvIdentityId string = createKeyVault ? keyVaultIdentity.id : ''
-output kvPrincipalId string = createKeyVault ? keyVaultIdentity.properties.principalId : ''
+output kvIdentityId string = createKeyVault ? keyVaultIdentity!.id : ''
+output kvPrincipalId string = createKeyVault ? keyVaultIdentity!.properties.principalId : ''
 
-output appsSvcIdentityId string = createAppService ? appServiceIdentity.id : ''
-output appsSvcPrincipalId string = createAppService ? appServiceIdentity.properties.principalId : ''
+output appsSvcIdentityId string = createAppService ? appServiceIdentity!.id : ''
+output appsSvcPrincipalId string = createAppService ? appServiceIdentity!.properties.principalId : ''
 
-output vpngwIdentityId string = createVpnGateway ? vpnGatewayIdentity.id : ''
-output vpngwPrincipalId string = createVpnGateway ? vpnGatewayIdentity.properties.principalId : ''
+output vpngwIdentityId string = createVpnGateway ? vpnGatewayIdentity!.id : ''
+output vpngwPrincipalId string = createVpnGateway ? vpnGatewayIdentity!.properties.principalId : ''
 
-output acrIdentityId string = createAcr ? acrIdentity.id : ''
-output acrPrincipalId string = createAcr ? acrIdentity.properties.principalId : ''
+output acrIdentityId string = createAcr ? acrIdentity!.id : ''
+output acrPrincipalId string = createAcr ? acrIdentity!.properties.principalId : ''
 
 output managedIdentityMap object = managedIdentities
