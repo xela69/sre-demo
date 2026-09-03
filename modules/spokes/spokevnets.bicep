@@ -10,11 +10,13 @@ param routeTableName string
 param logAnalyticsWorkspaceId string = ''
 
 // Spoke Route Table
-resource routeTable 'Microsoft.Network/routeTables@2024-07-01' = {
-  name: routeTableName
-  location: location
-  properties: {
-    disableBgpRoutePropagation: true // Prevent VPN GW from propagating on-prem routes that would bypass firewall inspection
+module routeTable 'br/public:avm/res/network/route-table:0.4.0' = {
+  name: '${routeTableName}-avm'
+  params: {
+    name: routeTableName
+    location: location
+    tags: { SecurityControl: 'Ignore' }
+    disableBgpRoutePropagation: true
     routes: [
       {
         name: '${routeTableName}-to-hubAzFirewall'
@@ -28,35 +30,49 @@ resource routeTable 'Microsoft.Network/routeTables@2024-07-01' = {
   }
 }
 
-resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = {
-  name: vnetName
-  location: location
-  properties: {
-    addressSpace: {
-      addressPrefixes: [addressSpace]
-    }
-    dhcpOptions: {
-      dnsServers: [fwPrivateIP] // update with firewall IP
-    }
+resource hubVnet 'Microsoft.Network/virtualNetworks@2024-07-01' existing = if (Peering) {
+  name: hubVnetName
+  scope: resourceGroup(hubVnetSubscriptionId, hubVnetResourceGroup)
+}
+
+module vnet 'br/public:avm/res/network/virtual-network:0.9.0' = {
+  name: '${vnetName}-avm'
+  params: {
+    name: vnetName
+    location: location
+    tags: { SecurityControl: 'Ignore' }
+    addressPrefixes: [addressSpace]
+    dnsServers: [fwPrivateIP]
     subnets: [
       for i in range(0, length(subnetNames)): {
         name: subnetNames[i]
-        properties: {
-          addressPrefixes: [subnetPrefixes[i]]
-          privateEndpointNetworkPolicies: subnetNames[i] == 'privateEPSubnet' ? 'Disabled' : null
-          routeTable: !contains(
-              [
-                'privateEPSubnet'
-              ],
-              subnetNames[i]
-            )
-            ? {
-                id: routeTable.id
-              }
-            : null
-        }
+        addressPrefixes: [subnetPrefixes[i]]
+        privateEndpointNetworkPolicies: subnetNames[i] == 'privateEPSubnet' ? 'Disabled' : null
+        routeTableResourceId: subnetNames[i] == 'privateEPSubnet' ? null : routeTable.outputs.resourceId
       }
     ]
+    peerings: Peering
+      ? [
+          {
+            name: '${vnetName}-to-${hubVnetName}-Peering'
+            remoteVirtualNetworkResourceId: hubVnet.id
+            allowVirtualNetworkAccess: true
+            allowForwardedTraffic: true
+            allowGatewayTransit: false
+            useRemoteGateways: true
+          }
+        ]
+      : []
+    diagnosticSettings: empty(logAnalyticsWorkspaceId)
+      ? []
+      : [
+          {
+            workspaceResourceId: logAnalyticsWorkspaceId
+            logAnalyticsDestinationType: 'Dedicated'
+            logCategoriesAndGroups: [{ categoryGroup: 'allLogs' }]
+            metricCategories: [{ category: 'AllMetrics' }]
+          }
+        ]
   }
 }
 // Optional w to a hub VNet if not deploying in a hub
@@ -66,40 +82,6 @@ param hubVnetName string
 param hubVnetResourceGroup string
 param hubVnetSubscriptionId string
 
-resource hubVnet 'Microsoft.Network/virtualNetworks@2024-07-01' existing = if (Peering) {
-  name: hubVnetName
-  scope: resourceGroup(hubVnetSubscriptionId, hubVnetResourceGroup)
-}
-// Create peering from spoke to hub VNet
-resource spokeToHubPeering 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2024-07-01' = if (Peering) {
-  name: '${vnetName}-to-${hubVnetName}-Peering'
-  parent: vnet
-  properties: {
-    remoteVirtualNetwork: { id: hubVnet.id }
-    allowVirtualNetworkAccess: true // ✓ Allow ‘HubVNet’ to access ‘SpokeVNet’
-    allowForwardedTraffic: true // ✓ Allow ‘HubVNet’ to receive forwarded traffic from ‘SpokeVNet’
-    allowGatewayTransit: false // spoke peering itself doesn’t host a VPNGW
-    useRemoteGateways: true // set true only after hub VPN GW is deployed (deployVpnGw=true in hubmain)
-  }
-}
-
-// ── Diagnostic Settings: all logs + all metrics → Log Analytics ──
-resource vnetDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (!empty(logAnalyticsWorkspaceId)) {
-  name: 'diag-${vnetName}'
-  scope: vnet
-  properties: {
-    workspaceId: logAnalyticsWorkspaceId
-    logs: [
-      { categoryGroup: 'allLogs', enabled: true }
-    ]
-    metrics: [
-      { category: 'AllMetrics', enabled: true }
-    ]
-  }
-}
-
 // Outputs
-output vnetId string = vnet.id
-output subnetIds array = [
-  for name in subnetNames: resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName, name)
-]
+output vnetId string = vnet.outputs.resourceId
+output subnetIds array = vnet.outputs.subnetResourceIds

@@ -18,7 +18,7 @@ param peerAppsSpoke bool = true // apps spoke (42021d44 / AppsRG)
 // ── Azure Data Explorer (Kusto) cluster for SRE analytics ──
 param deployAdx bool = true // Toggle to deploy Azure Data Explorer cluster
 @description('Optional principal ID of the SRE Agent managed identity for Kusto RBAC. Leave empty to skip the cluster viewer assignment.')
-param sreAgentPrincipalId string = '' 
+param sreAgentPrincipalId string = ''
 
 param natPublicIP string //injected securely from main.bicep for NAT testing
 param accessKey string
@@ -44,7 +44,6 @@ param firewallPrivateIP string = '10.50.4.4' // Static firewall private IP in Az
 param hubLocation string = 'westus2'
 //param hubSubId string = '155abeb8-c0a9-4927-a455-986a03026829'
 
-var appInsightsName = 'xelaAppsInsight${take(uniqueString(monitorRgName), 4)}'
 var vmInsightsDcrName = 'MSVMI-xelaLogs${take(uniqueString(monitorRgName), 4)}'
 var vmInsightsPerfDcrName = 'MSVMI-Perf-xelaLogs${take(uniqueString(monitorRgName), 4)}'
 var hubVmName = 'hubVM${toLower(take(uniqueString(vmRgName), 4))}'
@@ -287,6 +286,17 @@ module appInsights 'br/public:avm/res/insights/component:0.7.1' = if (deploylogs
       SecurityControl: 'Ignore'
       CostControl: 'Ignore'
     }
+    diagnosticSettings: [
+      {
+        workspaceResourceId: logsAnalytics!.outputs.resourceId
+        logCategoriesAndGroups: [
+          { categoryGroup: 'allLogs' }
+        ]
+        metricCategories: [
+          { category: 'AllMetrics' }
+        ]
+      }
+    ]
   }
 }
 
@@ -1111,7 +1121,6 @@ module monitorDiag '../../modules/hub/monitor-diag.bicep' = if (deploylogsAnalyt
   scope: resourceGroup(logsRGroup.name)
   params: {
     workspaceId: logsAnalytics!.outputs.resourceId
-    appInsightsName: appInsightsName
     vmInsightsDcrName: vmInsightsDcrName
     vmInsightsPerfDcrName: vmInsightsPerfDcrName
     enableVmInsightsPerfDcr: enableVmInsightsPerfDcr

@@ -23,6 +23,10 @@ param logAnalyticsWorkspaceId string // Log Analytics Workspace ID for diagnosti
 param firewallPrincipalId string
 @description('Resource ID of the user-assigned managed identity to attach to Azure Firewall')
 param firewallIdentityId string
+@description('Availability zones for the Azure Firewall public IP. Empty array keeps the current non-zonal demo deployment.')
+param firewallPublicIpZones array = []
+@description('Availability zones for Azure Firewall. Empty array keeps the current non-zonal demo deployment.')
+param firewallZones array = []
 
 // Reference to existing hub VNet
 resource hubVnet 'Microsoft.Network/virtualNetworks@2024-05-01' existing = {
@@ -36,11 +40,6 @@ resource dnsResolver 'Microsoft.Network/dnsResolvers@2025-05-01' existing = {
   scope: resourceGroup(hubVnetResourceGroup)
 }
 
-// Reference to existing firewall subnet
-resource firewallSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-05-01' existing = {
-  name: 'AzureFirewallSubnet'
-  parent: hubVnet
-}
 // Reference to existing DNS Resolver inbound endpoint
 resource dnsResolverInboundEndpoint 'Microsoft.Network/dnsResolvers/inboundEndpoints@2025-05-01' existing = {
   name: 'inbound'
@@ -62,11 +61,7 @@ resource firewallPublicIP 'Microsoft.Network/publicIPAddresses@2024-05-01' = {
     name: 'Standard' // Use Standard SKU for Azure Firewall
     tier: 'Regional' // Use Regional tier for Azure Firewall
   }
-  /*zones: [
-    '1'
-    '2'
-    '3'
-  ]*/
+  zones: empty(firewallPublicIpZones) ? null : firewallPublicIpZones
   properties: {
     publicIPAllocationMethod: 'Static'
     dnsSettings: {
@@ -131,67 +126,78 @@ resource firewallPolicy 'Microsoft.Network/firewallPolicies@2024-05-01' = {
 }
 
 // Azure Firewall
-resource firewall 'Microsoft.Network/azureFirewalls@2024-05-01' = {
-  name: firewallName
-  location: location
-  tags: {
-    Service: 'Network'
-    CostCenter: 'Infrastructure'
-    Environment: 'Production'
-    Owner: 'CPS'
-    SecurityControl: 'Ignore'
-  }
-  /*zones: [
-    '1'
-    '2'
-    '3' 
-  ]*/
-  properties: {
-    sku: {
-      name: 'AZFW_VNet'
-      tier: 'Premium'
+module firewall 'br/public:avm/res/network/azure-firewall:0.10.1' = {
+  name: '${firewallName}-avm'
+  params: {
+    name: firewallName
+    location: location
+    tags: {
+      Service: 'Network'
+      CostCenter: 'Infrastructure'
+      Environment: 'Production'
+      Owner: 'CPS'
+      SecurityControl: 'Ignore'
     }
-    ipConfigurations: [
+    azureSkuTier: 'Premium'
+    availabilityZones: firewallZones
+    virtualNetworkResourceId: hubVnet.id
+    publicIPResourceID: firewallPublicIP.id
+    firewallPolicyId: firewallPolicy.id
+    diagnosticSettings: [
       {
-        name: 'firewall-ipconfig'
-        properties: {
-          subnet: {
-            id: firewallSubnet.id
-          }
-          publicIPAddress: {
-            id: firewallPublicIP.id
-          }
-        }
+        name: diagnosticsName
+        workspaceResourceId: logAnalyticsWorkspaceId
+        logAnalyticsDestinationType: 'Dedicated'
+        logCategoriesAndGroups: [
+          { category: 'AZFWNetworkRule' }
+          { category: 'AZFWApplicationRule' }
+          { category: 'AZFWNatRule' }
+          { category: 'AZFWThreatIntel' }
+          { category: 'AZFWIdpsSignature' }
+          { category: 'AZFWDnsQuery' }
+          { category: 'AZFWFqdnResolveFailure' }
+          { category: 'AZFWFatFlow' }
+          { category: 'AZFWFlowTrace' }
+          { category: 'AZFWApplicationRuleAggregation' }
+          { category: 'AZFWNetworkRuleAggregation' }
+          { category: 'AZFWNatRuleAggregation' }
+        ]
+        metricCategories: [{ category: 'AllMetrics' }]
       }
     ]
-    firewallPolicy: {
-      id: firewallPolicy.id
-    }
   }
 }
+
 // Variables -- for on-prem lets just enable BGP on VPNGW
-var trustedAzureSubnets = [
+@description('Trusted Azure CIDR ranges allowed through firewall rules.')
+param trustedAzureSubnets array = [
   '10.50.0.0/20' //Hub-VNet
   '10.51.0.0/20' //Data-spoke
   '10.52.0.0/20' //Apps-spoke
   '10.53.0.0/20' //DC-spoke (onprem-spoke)
 ]
-var trustedOnPremSubnets = [
+
+@description('Trusted on-premises CIDR ranges allowed through firewall rules.')
+param trustedOnPremSubnets array = [
   '10.2.1.0/24' //FortiWifi Network
   '10.6.1.0/24' //HQ IPs
   '172.16.110.0/24' //DC-1
   '172.17.111.0/24' //DC-2
   '192.168.0.0/24' //GWifi
 ]
-var publicDnatNets = [
-  natPublicIP // Home Vnet
-  //'97.94.106.46' //Home Network
-]
-var umbrellaDnsIpAddresses = [
+
+@description('Additional public source CIDR ranges allowed to use temporary DNAT rules. The natPublicIP parameter is always added when supplied.')
+param additionalPublicDnatNets array = []
+var publicDnatNets = empty(natPublicIP) ? additionalPublicDnatNets : concat([natPublicIP], additionalPublicDnatNets)
+
+@description('Umbrella or upstream DNS IP ranges used by firewall DNS rules.')
+param umbrellaDnsIpAddresses array = [
   '172.17.111.0/24' //onprem DNS
   '168.63.129.16' //azuredns
 ]
-var denyPublicDnsIpAddresses = [
+
+@description('Public DNS resolver IPs blocked from direct spoke access.')
+param denyPublicDnsIpAddresses array = [
   // Cloudflare
   '1.1.1.1'
   '1.0.0.1'
@@ -206,20 +212,34 @@ var denyPublicDnsIpAddresses = [
   '208.67.220.220'
 ]
 
-var BadPublicIpsAddressGroup = [
+@description('Known public IPs blocked for demo/testing purposes.')
+param badPublicIpsAddressGroup array = [
   '23.185.0.3' //block this test site -- usc.edu
   '142.251.40.46'
 ]
-var infraServerSubnets = [
+
+@description('Infrastructure server subnet CIDR ranges that receive restricted internet egress rules.')
+param infraServerSubnets array = [
   '10.50.0.0/24' //Hub-VNet
   '10.51.0.0/24' //Data-spoke
   '10.52.0.0/24' //Apps-spoke
   '10.53.0.0/24' //DC-spoke (onprem-spoke)
 ]
-var internetUdpPorts = ['168.61.215.74/32', '208.67.222.0/24'] //'53', '123'
-var internetTcpPorts = ['52.202.184.83', '10.238.123.105'] //'25', '445', '9200', '9201'
-var internetHttpPort = ['84.201.220.0/24', '104.114.79.0/24', '104.123.159.0/24', '184.25.59.0/24', '23.32.0.0/11'] //'80'
-var internetHttpsPort = ['23.32.0.0/11', '23.47.72.0/24', '23.56.99.0/24'] //'443'
+
+@description('Destination CIDR ranges allowed for selected UDP internet egress rules.')
+param internetUdpPorts array = ['168.61.215.74/32', '208.67.222.0/24'] //'53', '123'
+@description('Destination CIDR ranges allowed for selected TCP internet egress rules.')
+param internetTcpPorts array = ['52.202.184.83', '10.238.123.105'] //'25', '445', '9200', '9201'
+@description('Destination CIDR ranges allowed for HTTP egress rules.')
+param internetHttpPort array = [
+  '84.201.220.0/24'
+  '104.114.79.0/24'
+  '104.123.159.0/24'
+  '184.25.59.0/24'
+  '23.32.0.0/11'
+] //'80'
+@description('Destination CIDR ranges allowed for HTTPS egress rules.')
+param internetHttpsPort array = ['23.32.0.0/11', '23.47.72.0/24', '23.56.99.0/24'] //'443'
 
 // --- Optional: IP Groups so you can change addresses without redeploying the policy ---
 resource trustedAzureIpGroup 'Microsoft.Network/ipGroups@2024-05-01' = {
@@ -308,7 +328,7 @@ resource denyBadPublicIpsAddressGroup 'Microsoft.Network/ipGroups@2024-05-01' = 
   location: location
   tags: { SecurityControl: 'Ignore' }
   properties: {
-    ipAddresses: BadPublicIpsAddressGroup
+    ipAddresses: badPublicIpsAddressGroup
   }
 }
 /*var microsoftFqdns = [
@@ -382,7 +402,7 @@ resource natRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2024-
             ]
           }
           {
-            name: 'InboundRDAppsVM'
+            name: 'InboundRDPHubVMAltPort'
             ruleType: 'NatRule'
             sourceIpGroups: [publicDnatIpGroup.id]
             destinationAddresses: [firewallPublicIP.properties.ipAddress]
@@ -479,7 +499,7 @@ resource networkRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2
             ]
             sourceIpGroups: [trustedAzureIpGroup.id] // spokes
             destinationAddresses: [
-              firewall.properties.ipConfigurations[0].properties.privateIPAddress
+              firewall.outputs.privateIp
             ]
             destinationPorts: [
               '53'
@@ -493,7 +513,7 @@ resource networkRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2
               'TCP'
             ]
             sourceAddresses: [
-              firewall.properties.ipConfigurations[0].properties.privateIPAddress
+              firewall.outputs.privateIp
             ]
             destinationAddresses: [
               dnsResolverInboundEndpoint.properties.ipConfigurations[0].privateIpAddress
@@ -510,7 +530,7 @@ resource networkRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2
               'TCP'
             ]
             sourceAddresses: [
-              firewall.properties.ipConfigurations[0].properties.privateIPAddress
+              firewall.outputs.privateIp
             ]
             destinationAddresses: ['1.1.1.1','8.8.8.8']
             destinationPorts: [
@@ -752,7 +772,7 @@ resource allowFwPublicDns 'Microsoft.Network/firewallPolicies/ruleCollectionGrou
             name: 'AllowFWtoPublicDNS'
             ruleType: 'NetworkRule'
             ipProtocols: ['UDP', 'TCP']
-            sourceAddresses: [firewall.properties.ipConfigurations[0].properties.privateIPAddress]
+            sourceAddresses: [firewall.outputs.privateIp]
             destinationAddresses: ['1.1.1.1', '8.8.8.8']
             destinationPorts: ['53']
           }
@@ -906,12 +926,12 @@ resource applicationRules 'Microsoft.Network/firewallPolicies/ruleCollectionGrou
 param routeTableName string
 resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' existing = {
   name: routeTableName
-  scope: resourceGroup(hubVnetResourceGroup)
 }
 
 // ==================== RBAC Role Assignments for Firewall Route Table====================
 resource firewallRouteTableRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(hubRouteTable.id, 'b24988ac-6180-42a0-ab88-20f7382dd24c', firewallPrincipalId)
+  scope: hubRouteTable
   properties: {
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
@@ -922,78 +942,11 @@ resource firewallRouteTableRole 'Microsoft.Authorization/roleAssignments@2022-04
   }
 }
 
-// 🔹 Diagnostic Settings for Azure Firewall
 param diagnosticsName string = 'fw-log-analytics'
-
-resource fwDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
-  name: diagnosticsName
-  scope: firewall
-  properties: {
-    workspaceId: logAnalyticsWorkspaceId
-    logAnalyticsDestinationType: 'Dedicated' // Resource Specific tables (recommended over AzureDiagnostics)
-    logs: [
-      {
-        category: 'AZFWNetworkRule'
-        enabled: true
-      }
-      {
-        category: 'AZFWApplicationRule'
-        enabled: true
-      }
-      {
-        category: 'AZFWNatRule'
-        enabled: true
-      }
-      {
-        category: 'AZFWThreatIntel'
-        enabled: true
-      }
-      {
-        category: 'AZFWIdpsSignature'
-        enabled: true
-      }
-      {
-        category: 'AZFWDnsQuery'
-        enabled: true
-      }
-      {
-        category: 'AZFWFqdnResolveFailure'
-        enabled: true
-      }
-      {
-        category: 'AZFWFatFlow'
-        enabled: true
-      }
-      {
-        category: 'AZFWFlowTrace'
-        enabled: true
-      }
-      {
-        category: 'AZFWApplicationRuleAggregation'
-        enabled: true
-      }
-      {
-        category: 'AZFWNetworkRuleAggregation'
-        enabled: true
-      }
-      {
-        category: 'AZFWNatRuleAggregation'
-        enabled: true
-      }
-    ]
-
-    metrics: [
-      {
-        category: 'AllMetrics'
-        enabled: true
-      }
-    ]
-  }
-}
 
 // Outputs
 output rulesDeployment string = 'Rules deployed'
-output firewallId string = firewall.id
+output firewallId string = firewall.outputs.resourceId
 output firewallPublicIp string = firewallPublicIP.properties.ipAddress
-output firewallPrivateIPAddress string = firewall.properties.ipConfigurations[0].properties.privateIPAddress
+output firewallPrivateIPAddress string = firewall.outputs.privateIp
 output firewallFqdn string = firewallPublicIP.properties.dnsSettings.fqdn

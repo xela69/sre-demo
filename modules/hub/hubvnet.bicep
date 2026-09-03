@@ -17,20 +17,20 @@ param azureAddressSpaces array = [
   // '10.53.0.0/20' // dc-spoke — uncomment when deployed
 ]
 // Route tables per Spoke region 
-resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = if (enableFirewallRouting) {
-  name: routeTableName
-  location: location
-  tags: {
-    Service: 'Network'
-    CostCenter: 'Infrastructure'
-    Environment: 'Production'
-    SecurityControl: 'Ignore'
-    CostControl: 'Ignore'
-  }
-  properties: {
-    disableBgpRoutePropagation: true // Prevent BGP from injecting on-prem-specific routes that would bypass 0.0.0.0/0 → Firewall
+module hubRouteTable 'br/public:avm/res/network/route-table:0.4.0' = if (enableFirewallRouting) {
+  name: '${routeTableName}-avm'
+  params: {
+    name: routeTableName
+    location: location
+    tags: {
+      Service: 'Network'
+      CostCenter: 'Infrastructure'
+      Environment: 'Production'
+      SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
+    }
+    disableBgpRoutePropagation: true
     routes: [
-      // ── All traffic through firewall for inspection (including Azure → On-prem) ────
       {
         name: '${routeTableName}-to-hubAzFirewall'
         properties: {
@@ -46,18 +46,19 @@ resource hubRouteTable 'Microsoft.Network/routeTables@2024-07-01' = if (enableFi
 // GatewaySubnet route table — forces on-prem→Azure traffic through Azure Firewall so the
 // firewall has state for BOTH directions (fixes asymmetric routing for on-prem-initiated sessions).
 // Only specific Azure address prefixes are added; 0.0.0.0/0 must NOT be added to GatewaySubnet.
-resource gatewaySubnetRouteTable 'Microsoft.Network/routeTables@2024-07-01' = if (enableFirewallRouting) {
-  name: '${routeTableName}-gw'
-  location: location
-  tags: {
-    Service: 'Network'
-    CostCenter: 'Infrastructure'
-    Environment: 'Production'
-    SecurityControl: 'Ignore'
-    CostControl: 'Ignore'
-  }
-  properties: {
-    disableBgpRoutePropagation: false // must stay false — GatewaySubnet needs BGP routes to function
+module gatewaySubnetRouteTable 'br/public:avm/res/network/route-table:0.4.0' = if (enableFirewallRouting) {
+  name: '${routeTableName}-gw-avm'
+  params: {
+    name: '${routeTableName}-gw'
+    location: location
+    tags: {
+      Service: 'Network'
+      CostCenter: 'Infrastructure'
+      Environment: 'Production'
+      SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
+    }
+    disableBgpRoutePropagation: false
     routes: [
       for (prefix, i) in azureAddressSpaces: {
         name: 'gw-to-fw-azure-${i}'
@@ -74,128 +75,91 @@ resource gatewaySubnetRouteTable 'Microsoft.Network/routeTables@2024-07-01' = if
 // Firewall subnet route table — Azure requires 0.0.0.0/0 → Internet on AzureFirewallSubnet.
 // On-prem prefixes are injected automatically via gateway route propagation (disableBgpRoutePropagation: false).
 // This works even when VPN GW BGP is disabled — gateway propagation uses LNG address spaces, not BGP.
-resource firewallSubnetRouteTable 'Microsoft.Network/routeTables@2024-07-01' = {
-  name: '${routeTableName}-fw'
-  location: location
-  tags: {
-    Service: 'Network'
-    CostCenter: 'Infrastructure'
-    Environment: 'Production'
-    SecurityControl: 'Ignore'
-    CostControl: 'Ignore'
-  }
-  properties: {
-    disableBgpRoutePropagation: false // VPN GW propagates on-prem (LNG) prefixes into this subnet automatically
+module firewallSubnetRouteTable 'br/public:avm/res/network/route-table:0.4.0' = {
+  name: '${routeTableName}-fw-avm'
+  params: {
+    name: '${routeTableName}-fw'
+    location: location
+    tags: {
+      Service: 'Network'
+      CostCenter: 'Infrastructure'
+      Environment: 'Production'
+      SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
+    }
+    disableBgpRoutePropagation: false
     routes: [
       {
         name: 'fw-subnet-to-internet'
-        properties: { addressPrefix: '0.0.0.0/0', nextHopType: 'Internet' }
+        properties: {
+          addressPrefix: '0.0.0.0/0'
+          nextHopType: 'Internet'
+        }
       }
     ]
   }
 }
 
-resource vnet 'Microsoft.Network/virtualNetworks@2024-07-01' = {
-  name: hubVnetName
-  location: location
-  tags: {
-    Service: 'Network'
-    CostCenter: 'Infrastructure'
-    Environment: 'Production'
-    SecurityControl: 'Ignore'
-    CostControl: 'Ignore'
-  }
-  properties: {
-    addressSpace: {
-      addressPrefixes: [addressSpace]
+module vnet 'br/public:avm/res/network/virtual-network:0.9.0' = {
+  name: '${hubVnetName}-avm'
+  params: {
+    name: hubVnetName
+    location: location
+    tags: {
+      Service: 'Network'
+      CostCenter: 'Infrastructure'
+      Environment: 'Production'
+      SecurityControl: 'Ignore'
+      CostControl: 'Ignore'
     }
-    dhcpOptions: enableFirewallRouting
-      ? {
-          dnsServers: [fwPrivateIP]
-        }
-      : null
+    addressPrefixes: [addressSpace]
+    dnsServers: enableFirewallRouting ? [fwPrivateIP] : []
     subnets: [
       for i in range(0, length(subnetNames)): {
         name: subnetNames[i]
-        properties: {
-          addressPrefixes: [subnetPrefixes[i]]
-          privateEndpointNetworkPolicies: subnetNames[i] == 'privateEPSubnet' ? 'Disabled' : null
-          routeTable: subnetNames[i] == 'AzureFirewallSubnet'
-            ? {
-                id: firewallSubnetRouteTable.id
-              }
-            : subnetNames[i] == 'GatewaySubnet' && enableFirewallRouting
-                ? {
-                    id: gatewaySubnetRouteTable!.id
-                  }
-                : enableFirewallRouting && !contains(
-                      [
-                        'GatewaySubnet'
-                        'privateEPSubnet'
-                        'AzureBastionSubnet'
-                        'appGatewaySubnet'
-                        'dns-inbound'
-                        'dns-outbound'
-                      ],
-                      subnetNames[i]
-                    )
-                    ? {
-                        id: hubRouteTable!.id
-                      }
-                    : null
-          delegations: contains(['dns-inbound', 'dns-outbound'], subnetNames[i])
-            ? [
-                {
-                  name: 'dnsDelegation-${subnetNames[i]}'
-                  properties: {
-                    serviceName: 'Microsoft.Network/dnsResolvers'
-                  }
-                }
-              ]
-            : contains(['containerAppSubnet'], subnetNames[i])
-                ? [
-                    {
-                      name: 'containerAppsDelegation-${subnetNames[i]}'
-                      properties: {
-                        serviceName: 'Microsoft.App/containerApps'
-                      }
-                    }
-                  ]
-                : null
-        }
+        addressPrefixes: [subnetPrefixes[i]]
+        privateEndpointNetworkPolicies: subnetNames[i] == 'privateEPSubnet' ? 'Disabled' : null
+        routeTableResourceId: subnetNames[i] == 'AzureFirewallSubnet'
+          ? firewallSubnetRouteTable.outputs.resourceId
+          : subnetNames[i] == 'GatewaySubnet' && enableFirewallRouting
+              ? gatewaySubnetRouteTable!.outputs.resourceId
+              : enableFirewallRouting && !contains(
+                    [
+                      'GatewaySubnet'
+                      'privateEPSubnet'
+                      'AzureBastionSubnet'
+                      'appGatewaySubnet'
+                      'dns-inbound'
+                      'dns-outbound'
+                    ],
+                    subnetNames[i]
+                  )
+                  ? hubRouteTable!.outputs.resourceId
+                  : null
+        delegation: contains(['dns-inbound', 'dns-outbound'], subnetNames[i])
+          ? 'Microsoft.Network/dnsResolvers'
+          : contains(['containerAppSubnet'], subnetNames[i]) ? 'Microsoft.App/containerApps' : null
       }
     ]
-  }
-}
-
-resource vnetDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (enableDiagnostics && !empty(logAnalyticsWorkspaceId)) {
-  name: 'diag-${vnet.name}'
-  scope: vnet
-  properties: {
-    workspaceId: logAnalyticsWorkspaceId
-    logs: [
-      {
-        categoryGroup: 'allLogs'
-        enabled: true
-      }
-    ]
-    metrics: [
-      {
-        category: 'AllMetrics'
-        enabled: true
-      }
-    ]
+    diagnosticSettings: enableDiagnostics && !empty(logAnalyticsWorkspaceId)
+      ? [
+          {
+            workspaceResourceId: logAnalyticsWorkspaceId
+            logAnalyticsDestinationType: 'Dedicated'
+            logCategoriesAndGroups: [{ categoryGroup: 'allLogs' }]
+            metricCategories: [{ category: 'AllMetrics' }]
+          }
+        ]
+      : []
   }
 }
 
 // Outputs
-output vnetId string = vnet.id
-output subnetIds array = [
-  for name in subnetNames: resourceId('Microsoft.Network/virtualNetworks/subnets', hubVnetName, name)
-]
+output vnetId string = vnet.outputs.resourceId
+output subnetIds array = vnet.outputs.subnetResourceIds
 output privateEPSubnetIds array = [
   for name in subnetNames: name == 'privateEPSubnet'
     ? resourceId('Microsoft.Network/virtualNetworks/subnets', hubVnetName, name)
     : null
 ]
-output routeTableId string = hubRouteTable!.name
+output routeTableId string = hubRouteTable!.outputs.name

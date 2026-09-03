@@ -1,37 +1,12 @@
 targetScope = 'resourceGroup'
 
 param workspaceId string
-param appInsightsName string
 param vmInsightsDcrName string
 param vmInsightsPerfDcrName string
 param enableVmInsightsPerfDcr bool = true
 
 @description('Name of the SRE portal managed identity in this RG. Blank to skip the lock.')
 param sreAgentIdentityName string = ''
-
-resource appInsightsExisting 'Microsoft.Insights/components@2020-02-02' existing = {
-  name: appInsightsName
-}
-
-resource appInsightsDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
-  name: 'diag-appinsights'
-  scope: appInsightsExisting
-  properties: {
-    workspaceId: workspaceId
-    logs: [
-      {
-        categoryGroup: 'allLogs'
-        enabled: true
-      }
-    ]
-    metrics: [
-      {
-        category: 'AllMetrics'
-        enabled: true
-      }
-    ]
-  }
-}
 
 resource vmInsightsDcrExisting 'Microsoft.Insights/dataCollectionRules@2022-06-01' existing = {
   name: vmInsightsDcrName

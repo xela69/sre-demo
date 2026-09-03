@@ -5,10 +5,22 @@ Goal: Prefer Azure Verified Modules (AVM) wherever practical, and flag non-AVM m
 
 ## Summary
 
-- Total module invocations in Bicep: 48
-- AVM module invocations: 27
-- Non-AVM module invocations: 21
-- AVM adoption by invocation: 56.25%
+- Total module invocations in Bicep: 53
+- AVM module invocations: 34
+- Non-AVM module invocations: 19
+- AVM adoption by invocation: 64.15%
+
+## Completed Conversions
+
+| Date | Module | Change | Validation |
+|---|---|---|---|
+| 2026-09-03 | `modules/apps/grubifyFrontend.bicep` | Removed one-use custom wrapper and called `br/public:avm/res/app/container-app:0.22.0` directly from `main/apps-spoke/appsmain.bicep` | `az bicep build --file main/apps-spoke/appsmain.bicep` |
+| 2026-09-03 | `modules/apps/containerApp.bicep` | Removed API Container App wrapper; `main/apps-spoke/appsmain.bicep` now calls `br/public:avm/res/app/managed-environment:0.13.1` and `br/public:avm/res/app/container-app:0.22.0` directly | `az bicep build --file main/apps-spoke/appsmain.bicep` |
+| 2026-09-03 | `modules/spokes/spokevnets.bicep` | Converted internals to AVM route table and AVM virtual network modules while retaining the wrapper contract for apps/data/DC spokes | `az bicep build --file main/apps-spoke/appsmain.bicep`; `az bicep build --file main/data-spoke/datamain.bicep`; `az bicep build --file main/dc-spoke/dcmain.bicep` |
+| 2026-09-03 | `modules/hub/hubvnet.bicep` | Converted internals to AVM route table and AVM virtual network modules while retaining the wrapper for firewall-routing and subnet orchestration | `az bicep build --file main/hub/hubmain.bicep` |
+| 2026-09-03 | `modules/hub/vnet-peering.bicep` | Reviewed for AVM conversion; retained as custom because AVM peering support is embedded in the VNet module and would remove the isolated peering deployment boundary | `az bicep build --file main/hub/hubmain.bicep` |
+| 2026-09-03 | `modules/hub/monitor-diag.bicep` | Moved App Insights diagnostics into the AVM App Insights module; retained custom wrapper for DCR diagnostics and SRE identity lock | `az bicep build --file main/hub/hubmain.bicep` |
+| 2026-09-03 | `modules/hub/firewall-vnet.bicep` | Parameterized IP group lists, added optional zone parameters, fixed DNAT naming ambiguity, scoped route-table RBAC correctly, and converted the base Azure Firewall resource to `br/public:avm/res/network/azure-firewall:0.10.1`. Firewall Policy and rule collection groups remain custom for now. | `az bicep build --file main/hub/hubmain.bicep` |
 
 ## AVM-First Policy (for this repo)
 
@@ -23,18 +35,16 @@ Goal: Prefer Azure Verified Modules (AVM) wherever practical, and flag non-AVM m
 
 | Module Path | Calls | Current Role | AVM Opportunity | Recommendation | Priority |
 |---|---:|---|---|---|---|
-| ../../modules/hub/hubvnet.bicep | 1 | Hub VNet build, subnets/UDR composition | Likely yes (VNet AVM) | Review for conversion if custom route composition can be preserved via params/child modules | High |
-| ../../modules/spokes/spokevnets.bicep | 3 | Spoke VNet creation | Likely yes (VNet AVM) | Convert to AVM for consistency across spokes if feature parity confirmed | High |
-| ../../modules/hub/vnet-peering.bicep | 1 | VNet peering logic | Likely yes (peering AVM or child resource pattern) | Review for AVM conversion; retain only if cross-subscription orchestration is cleaner custom | High |
-| ../../modules/hub/firewall-vnet.bicep | 1 | Azure Firewall + policy/rules orchestration | Likely yes (Firewall AVM exists, rules may still be custom) | Hybrid approach: AVM for base firewall resource, keep custom rule collections if needed | High |
+| ../../modules/hub/hubvnet.bicep | 1 | Hub VNet orchestration | Hybrid complete | Retain wrapper for firewall-routing and subnet orchestration; internals now use AVM route table and AVM VNet modules | Low |
+| ../../modules/spokes/spokevnets.bicep | 3 | Spoke VNet orchestration | Hybrid complete | Retain wrapper for stable spoke contract; internals now use AVM route table and AVM VNet modules | Low |
+| ../../modules/hub/vnet-peering.bicep | 1 | VNet peering logic | Keep custom | Retain custom module to preserve separate cross-subscription peering deployment and RBAC failure isolation | Low |
+| ../../modules/hub/firewall-vnet.bicep | 1 | Azure Firewall + policy/rules orchestration | Hybrid in progress | Base firewall now uses AVM. Keep wrapper and custom policy/rule groups until firewall policy and rule collection group conversion can be compared safely. | Medium |
 | ../../modules/hub/privatednslinks.bicep | 1 | Private DNS links orchestration | Likely yes | Review conversion to AVM/private DNS modules if parity exists | Medium |
 | ../../modules/hub/failure-anomalies.bicep | 1 | App Insights smart detection rules | Partial/uncertain | Keep custom for now; verify AVM coverage before migration | Medium |
-| ../../modules/hub/monitor-diag.bicep | 1 | Diagnostic settings + lock/orchestration | Partial | Keep custom unless AVM extension modules fully cover lock + diagnostics flow | Medium |
+| ../../modules/hub/monitor-diag.bicep | 1 | DCR diagnostics + SRE identity lock | Partial AVM reduction complete | Keep custom for DCR diagnostics and lock; App Insights diagnostics now live in AVM App Insights module | Low |
 | ../../modules/hub/network-diag.bicep | 1 | Network diagnostics settings | Partial | Consolidate into AVM-supported diagnostic settings where possible | Medium |
 | ../../modules/hub/vm-diag.bicep | 1 | VM diagnostics settings | Partial | Replace with AVM-supported diagnostics on VM modules where possible | Medium |
 | ../../modules/apps/vmDiag.bicep | 3 | App/SQL VM diagnostics wrapper | Partial | Replace wrapper with direct AVM diagnostics support if feasible | Medium |
-| ../../modules/apps/containerApp.bicep | 1 | Wrapper around AVM managed environment + container app | Yes (already AVM inside) | Consider removing wrapper and calling AVM directly from parent if no unique logic retained | Medium |
-| ../../modules/apps/grubifyFrontend.bicep | 1 | Wrapper around AVM container app | Yes (already AVM inside) | Same as above: flatten wrapper if no unique logic retained | Medium |
 | ../../platform/identity/mgnt-Identity.bicep | 1 | Managed identity + role orchestration | Partial | Keep custom for orchestration; optionally use AVM for identity resource creation inside module | Low |
 | ./mg-policy.bicep | 1 | Management group policy orchestration | No direct one-size AVM fit | Keep custom; this is governance orchestration | Low |
 | ./subscription-baseline.bicep | 1 | Subscription baseline orchestration | No direct one-size AVM fit | Keep custom | Low |
@@ -46,17 +56,13 @@ Goal: Prefer Azure Verified Modules (AVM) wherever practical, and flag non-AVM m
 ## Proposed Conversion Waves
 
 ### Wave 1 (High impact, lowest disruption)
-- spokevnets.bicep
-- vnet-peering.bicep
-- hubvnet.bicep (if parity confirmed)
+- Complete
 
 ### Wave 2 (Security/platform consistency)
-- firewall-vnet.bicep (hybrid AVM base + custom policy rules)
+- firewall-vnet.bicep (next: evaluate AVM firewall-policy and rule-collection-group modules)
 - privatednslinks.bicep
 
 ### Wave 3 (Reduce wrapper indirection)
-- apps/containerApp.bicep
-- apps/grubifyFrontend.bicep
 - apps/vmDiag.bicep and hub diag wrappers where AVM supports direct diagnostic settings
 
 ---
