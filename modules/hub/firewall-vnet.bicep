@@ -71,50 +71,38 @@ resource firewallPublicIP 'Microsoft.Network/publicIPAddresses@2024-05-01' = {
 }
 
 // Firewall Policy
-resource firewallPolicy 'Microsoft.Network/firewallPolicies@2024-05-01' = {
-  name: firewallPolicyName
-  location: location
-  tags: {
-    Service: 'Network'
-    CostCenter: 'Infrastructure'
-    Environment: 'Production'
-    Owner: 'Xelatech'
-    SecurityControl: 'Ignore'
-  }
-  identity: {
-    type: 'UserAssigned'
-    userAssignedIdentities: {
-      '${firewallIdentityId}': {}
+module firewallPolicyDeployment 'br/public:avm/res/network/firewall-policy:0.3.5' = {
+  name: '${firewallPolicyName}-avm'
+  params: {
+    name: firewallPolicyName
+    location: location
+    tags: {
+      Service: 'Network'
+      CostCenter: 'Infrastructure'
+      Environment: 'Production'
+      Owner: 'Xelatech'
+      SecurityControl: 'Ignore'
     }
-  }
-  properties: {
-    sku: {
-      tier: 'Premium' // Correct tier or 'Standard' as needed
+    tier: 'Premium'
+    threatIntelMode: 'Deny'
+    managedIdentities: {
+      userAssignedResourceIds: [firewallIdentityId]
     }
-    threatIntelMode: 'Deny' // Options: 'Alert', 'Deny', 'Off'.If you want both alert and deny, set to 'Deny' (which also logs alerts).
-    dnsSettings: {
-      enableProxy: true
-      servers: [
-        dnsResolverInboundEndpoint.properties.ipConfigurations[0].privateIpAddress
-      ] // Leave blank to use Azure DNS and point DNS to Resolver
-    }
-    insights: {
-      isEnabled: true
-      retentionDays: 30
-      logAnalyticsResources: {
-        workspaces: [
-          {
-            region: location
-            workspaceId: {
-              id: logAnalyticsWorkspaceId
-            }
-          }
-        ]
-        defaultWorkspaceId: {
+    enableProxy: true
+    servers: [
+      dnsResolverInboundEndpoint.properties.ipConfigurations[0].privateIpAddress
+    ]
+    insightsIsEnabled: true
+    retentionDays: 30
+    workspaces: [
+      {
+        region: location
+        workspaceId: {
           id: logAnalyticsWorkspaceId
         }
       }
-    }
+    ]
+    defaultWorkspaceResourceId: logAnalyticsWorkspaceId
     intrusionDetection: {
       mode: 'Deny'
       configuration: {
@@ -142,7 +130,7 @@ module firewall 'br/public:avm/res/network/azure-firewall:0.10.1' = {
     availabilityZones: firewallZones
     virtualNetworkResourceId: hubVnet.id
     publicIPResourceID: firewallPublicIP.id
-    firewallPolicyId: firewallPolicy.id
+    firewallPolicyId: firewallPolicyDeployment.outputs.resourceId
     diagnosticSettings: [
       {
         name: diagnosticsName
@@ -354,13 +342,11 @@ resource denyBadPublicIpsAddressGroup 'Microsoft.Network/ipGroups@2024-05-01' = 
   '*.monitor.azure.com'
 ]*/
 // NAT Rules Collection Group temporarily testing from source public IP
-resource natRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2024-05-01' = {
+module natRules 'br/public:avm/res/network/firewall-policy/rule-collection-group:0.1.0' = {
   name: 'XelaNatRules'
-  parent: firewallPolicy
-  dependsOn: [
-    firewall
-  ]
-  properties: {
+  params: {
+    firewallPolicyName: firewallPolicyName
+    name: 'XelaNatRules'
     priority: 100
     ruleCollections: [
       {
@@ -419,16 +405,18 @@ resource natRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2024-
       }
     ]
   }
+  dependsOn: [
+    firewallPolicyDeployment
+    firewall
+  ]
 }
 // New rule collection with higher precedence than your broad allows
-resource denyDirectDns 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2024-05-01' = {
+module denyDirectDns 'br/public:avm/res/network/firewall-policy/rule-collection-group:0.1.0' = {
   name: 'XelaDenyDirectDns'
-  parent: firewallPolicy
-  dependsOn: [
-    natRules
-  ]
-  properties: {
-    priority: 200 // < lower number = higher priority (before your 200s)
+  params: {
+    firewallPolicyName: firewallPolicyName
+    name: 'XelaDenyDirectDns'
+    priority: 200
     ruleCollections: [
       {
         name: 'DenyDNSFromSpokes'
@@ -448,15 +436,19 @@ resource denyDirectDns 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@
       }
     ]
   }
+  dependsOn: [
+    natRules
+  ]
 }
 // Network Rules Collection Group
-resource networkRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2024-05-01' = {
+module networkRules 'br/public:avm/res/network/firewall-policy/rule-collection-group:0.1.0' = {
   name: 'XelatNetworkRules'
-  parent: firewallPolicy
   dependsOn: [
     denyDirectDns
   ]
-  properties: {
+  params: {
+    firewallPolicyName: firewallPolicyName
+    name: 'XelatNetworkRules'
     priority: 300
     ruleCollections: [
       {
@@ -753,13 +745,14 @@ resource networkRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2
 @description('TEMPORARY break-glass to let the firewall talk to public DNS directly')
 param enableFwPublicDns bool = false
 
-resource allowFwPublicDns 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2024-05-01' = if (enableFwPublicDns) {
+module allowFwPublicDns 'br/public:avm/res/network/firewall-policy/rule-collection-group:0.1.0' = if (enableFwPublicDns) {
   name: 'XelaBreakglassPublicDns'
-  parent: firewallPolicy
   dependsOn: [
     networkRules
   ]
-  properties: {
+  params: {
+    firewallPolicyName: firewallPolicyName
+    name: 'XelaBreakglassPublicDns'
     priority: 320
     ruleCollections: [
       {
@@ -782,9 +775,8 @@ resource allowFwPublicDns 'Microsoft.Network/firewallPolicies/ruleCollectionGrou
   }
 }
 // Application Rules Collection Group
-resource applicationRules 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2024-05-01' = {
+module applicationRules 'br/public:avm/res/network/firewall-policy/rule-collection-group:0.1.0' = {
   name: 'XelaApplicationRules'
-  parent: firewallPolicy
   dependsOn: enableFwPublicDns
     ? [
         allowFwPublicDns
@@ -792,7 +784,9 @@ resource applicationRules 'Microsoft.Network/firewallPolicies/ruleCollectionGrou
     : [
         networkRules
       ]
-  properties: {
+  params: {
+    firewallPolicyName: firewallPolicyName
+    name: 'XelaApplicationRules'
     priority: 400
     ruleCollections: [
       {
