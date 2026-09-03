@@ -109,6 +109,90 @@ flowchart TB
 - Gateway subnet has routes to send traffic back through the firewall where required.
 - Bastion provides admin access without direct public VM exposure.
 
+## Lab Spoke Workload Intent
+
+### Hub Shared Services
+
+The hub is the lab control plane, not a normal workload spoke. It hosts the common platform services that the workload spokes depend on: Azure Firewall, VPN Gateway, DNS Resolver, Bastion, Key Vault, ACR, shared managed identities, Log Analytics, App Insights, VM Insights DCRs, ADX, and supporting storage.
+
+Lab intent:
+
+- Prove the landing zone/shared-services model.
+- Centralize inspection and routing through Azure Firewall.
+- Provide shared observability for hub, apps, data, and DC/on-prem simulation workloads.
+- Preserve `hubRG-Monitor` across rebuilds so SRE agent and monitoring resources survive lab teardown cycles.
+
+### Apps Spoke
+
+The apps spoke is the application workload zone. It represents the application side of the lab and the likely target area for app modernization or migration demos.
+
+Network:
+
+- VNet: `10.52.0.0/20`
+- VM subnet: `10.52.0.0/24`
+- App subnet: `10.52.1.0/24`
+- Private endpoint subnet: `10.52.10.0/24`
+
+Workloads:
+
+- `AppsVM`: Windows Server app VM for general workload/testing scenarios.
+- `AppsLinuxVM...`: Linux VM for ops, connectivity, DNS, and firewall path testing.
+- `AppsSQLVM`: SQL Server 2022 Developer VM tagged as an Azure Migrate source.
+- Apps storage account with `inputs`, `outputs`, and `errors` blob containers plus `notesdoc` file share.
+- Container Apps environment hosting `grubify-api` and `grubify-frontend` when Grubify images are ready.
+
+Lab intent:
+
+- Show a realistic app spoke with VM, SQL, storage, and containerized app workloads.
+- Exercise VM Insights, AMA, DCR associations, and dependency maps.
+- Demonstrate firewall-controlled egress and hub-routed east-west/hybrid traffic.
+- Provide app and SQL resources that can participate in migration and modernization demos.
+
+### Data Spoke
+
+The data spoke is the legacy/on-prem-style source environment for migration labs. It simulates older Windows and SQL workloads that need Arc onboarding, assessment, migration, or modernization.
+
+Network:
+
+- VNet: `10.51.0.0/20`
+- VM subnet: `10.51.0.0/24`
+- Apps subnet: `10.51.1.0/24`
+- Private endpoint subnet: `10.51.10.0/24`
+
+Workloads:
+
+- `onprem-win-vm`: Windows Server 2012 R2 + SQL 2014 community gallery image; DSC runs `ArcConnect`.
+- `onprem-sql-vm`: Windows Server 2022 + SQL Server 2019 Standard; DSC restores `database.bak` from the Tailspin lab assets.
+- Data storage account with `inputs`, `outputs`, and `errors` blob containers plus `notesdoc` file share.
+
+Lab intent:
+
+- Represent the source side of a migration story.
+- Demonstrate Azure Arc onboarding for a legacy Windows workload.
+- Demonstrate SQL source setup for Azure Migrate/DMS style flows.
+- Keep legacy/data workloads separate from the apps modernization target area.
+
+### DC / On-Prem Simulation Spoke
+
+The DC spoke is a lightweight expansion area for infrastructure or on-prem simulation patterns. It is less built out than apps/data today.
+
+Network:
+
+- VNet: `10.53.0.0/20`
+- VM subnet: `10.53.0.0/24`
+- Apps subnet: `10.53.1.0/24`
+- Private endpoint subnet: `10.53.10.0/24`
+
+Workloads:
+
+- `dcVM`: small Windows VM placeholder for DC/on-prem-style infrastructure scenarios.
+
+Lab intent:
+
+- Reserve a spoke for future domain services, infrastructure services, or additional on-prem site simulation.
+- Reuse the same spoke routing model through the hub firewall.
+- Provide room to expand hybrid network and identity demos without overloading the apps/data spokes.
+
 ## Demo Storyline
 
 This environment can support several demos:
