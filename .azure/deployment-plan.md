@@ -1,6 +1,6 @@
 # Azure Deployment Validation Plan
 
-**Status:** Validation In Progress
+**Status:** Dual-tenant validation passed; tenant-scope phase remains blocked
 **Mode:** Validate existing infrastructure orchestration
 **IaC:** Bicep
 **Execution boundary:** Compile, ARM validation, and what-if only. Do not deploy resources.
@@ -48,8 +48,8 @@ All seven entry points compiled successfully. `platform/mngt/main.bicep` emitted
 | Tenant management | Blocked | Blocked | The principal lacks `Microsoft.Resources/deployments/validate/action` and `Microsoft.Resources/deployments/whatIf/action` at tenant scope `/`. It is Owner at the tenant-root management group, which is a different scope. |
 | Management-group policy | Passed | Passed: 0 changes | Evaluated at the existing `Infra-grp` management group. The checked-in policy parameters are empty. |
 | Platform identity | Passed | Passed: 8 creates | Evaluated in the Infra-hub subscription. |
-| Hub | Passed | Passed: 172 creates, 1 deploy, 14 unsupported | No deletes were reported. Unsupported means ARM could not calculate those resource changes, so they require review before deployment. |
-| Data spoke | Failed | Failed | Default configuration references the removed Tahubu `WS2012R2_SQL2014_Base/latest` community image. The gallery was unavailable in `westus3`, `northcentralus`, and `swedencentral`. With only `deployWinVM=false`, validation passed and what-if reported 19 creates and 2 unsupported changes. |
+| Hub | Passed | Passed: 171 creates, 1 deploy, 14 unsupported | Revalidated with the TenantB VPN contract. No deletes were reported. The 14 unsupported analyses are role assignments whose IDs depend on identities created during deployment. |
+| TenantB source network | Passed | Passed: 9 creates | Validated independently in the Xelatech subscription. No deletes or unsupported changes were reported. |
 | DC spoke | Passed | Passed: 0 changes | No changes were reported. |
 | Apps spoke | Passed | Passed: 52 creates, 2 unsupported | No deletes were reported. |
 
@@ -57,10 +57,13 @@ Validation used `az deployment tenant|mg|sub validate` followed by the matching 
 
 A static RBAC scan found role assignments scoped through the owning modules and using built-in role IDs or names. Provider validation passed for the policy, identity, hub, DC, and apps phases. No deployment or post-deployment command was executed.
 
+TenantB and MCAPS were revalidated together on 2026-09-03 with `scripts/validate-dual-tenant.sh`. The initial TenantB validation reached ARM but the FortiGate PAYG plan was rejected because the Visual Studio subscription does not support its Marketplace payment instrument. The TenantB template now defaults to FortiGate BYOL plan `fortinet_fg-vm`, version `7.4.9`; Marketplace terms were accepted and both ARM validations and what-if previews passed.
+
+The MCAPS preview used documentation-only peer IP `192.0.2.10`. Supply `TENANTB_FORTIGATE_PUBLIC_IP` from the deployed TenantB static public IP before deployment. FortiGate BYOL also requires a valid Fortinet license before the appliance can become operational.
+
 Blocking remediation:
 
 1. Grant the validating principal tenant-scope deployment permissions at `/`, or run the tenant phase with a principal that already has them.
-2. Replace the retired Tahubu image in the data-spoke legacy VM module, or explicitly approve `deployWinVM=false` as the supported deployment configuration.
 
 ## 5. Deployment
 

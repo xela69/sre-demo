@@ -38,6 +38,10 @@ param fortigateImageSku string = 'fortinet_fg-vm'
 @description('Pinned FortiGate image version validated in westus2 for the selected SKU.')
 param fortigateImageVersion string = '7.4.9'
 
+@secure()
+@description('FortiGate BYOL license (.lic) content. Leave empty for validation; supply the free-trial or paid license at deployment to activate the appliance.')
+param fortigateLicenseContent string = ''
+
 resource networkResourceGroup 'Microsoft.Resources/resourceGroups@2024-11-01' = {
   name: resourceGroupName
   location: location
@@ -63,6 +67,7 @@ module tenantBResources './tenantb-resources.bicep' = {
     fortigateVmSize: fortigateVmSize
     fortigateImageSku: fortigateImageSku
     fortigateImageVersion: fortigateImageVersion
+    fortigateLicenseContent: fortigateLicenseContent
   }
 }
 

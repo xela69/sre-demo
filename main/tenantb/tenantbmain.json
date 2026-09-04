@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "11123220183333828451"
+      "templateHash": "18390284937466141598"
     }
   },
   "parameters": {
@@ -88,6 +88,13 @@
       "metadata": {
         "description": "Pinned FortiGate image version validated in westus2 for the selected SKU."
       }
+    },
+    "fortigateLicenseContent": {
+      "type": "securestring",
+      "defaultValue": "",
+      "metadata": {
+        "description": "FortiGate BYOL license (.lic) content. Leave empty for validation; supply the free-trial or paid license at deployment to activate the appliance."
+      }
     }
   },
   "resources": [
@@ -143,6 +150,9 @@
           },
           "fortigateImageVersion": {
             "value": "[parameters('fortigateImageVersion')]"
+          },
+          "fortigateLicenseContent": {
+            "value": "[parameters('fortigateLicenseContent')]"
           }
         },
         "template": {
@@ -152,7 +162,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.46.1.21595",
-              "templateHash": "4191403255186420381"
+              "templateHash": "1709652628314018206"
             }
           },
           "parameters": {
@@ -227,6 +237,13 @@
               "defaultValue": "7.4.9",
               "metadata": {
                 "description": "Pinned FortiGate image version validated in westus2 for the selected SKU."
+              }
+            },
+            "fortigateLicenseContent": {
+              "type": "securestring",
+              "defaultValue": "",
+              "metadata": {
+                "description": "FortiGate BYOL license (.lic) content. Leave empty for validation; supply the free-trial or paid license at deployment to activate the appliance."
               }
             }
           },
@@ -456,14 +473,7 @@
                     }
                   }
                 },
-                "osProfile": {
-                  "computerName": "[variables('fortigateName')]",
-                  "adminUsername": "[parameters('adminUsername')]",
-                  "adminPassword": "[parameters('adminPassword')]",
-                  "linuxConfiguration": {
-                    "disablePasswordAuthentication": false
-                  }
-                },
+                "osProfile": "[union(createObject('computerName', variables('fortigateName'), 'adminUsername', parameters('adminUsername'), 'adminPassword', parameters('adminPassword'), 'linuxConfiguration', createObject('disablePasswordAuthentication', false())), if(empty(parameters('fortigateLicenseContent')), createObject(), createObject('customData', base64(parameters('fortigateLicenseContent')))))]",
                 "networkProfile": {
                   "networkInterfaces": [
                     {

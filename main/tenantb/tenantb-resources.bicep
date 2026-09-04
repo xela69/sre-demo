@@ -35,6 +35,10 @@ param fortigateImageSku string = 'fortinet_fg-vm'
 @description('Pinned FortiGate image version validated in westus2 for the selected SKU.')
 param fortigateImageVersion string = '7.4.9'
 
+@secure()
+@description('FortiGate BYOL license (.lic) content. Leave empty for validation; supply the free-trial or paid license at deployment to activate the appliance.')
+param fortigateLicenseContent string = ''
+
 var externalSubnetPrefix = '10.61.0.0/27'
 var internalSubnetPrefix = '10.61.0.32/27'
 var managementSubnetPrefix = '10.61.1.0/24'
@@ -283,14 +287,21 @@ resource fortigateVm 'Microsoft.Compute/virtualMachines@2024-11-01' = {
         }
       }
     }
-    osProfile: {
-      computerName: fortigateName
-      adminUsername: adminUsername
-      adminPassword: adminPassword
-      linuxConfiguration: {
-        disablePasswordAuthentication: false
-      }
-    }
+    osProfile: union(
+      {
+        computerName: fortigateName
+        adminUsername: adminUsername
+        adminPassword: adminPassword
+        linuxConfiguration: {
+          disablePasswordAuthentication: false
+        }
+      },
+      empty(fortigateLicenseContent)
+        ? {}
+        : {
+            customData: base64(fortigateLicenseContent)
+          }
+    )
     networkProfile: {
       networkInterfaces: [
         {
