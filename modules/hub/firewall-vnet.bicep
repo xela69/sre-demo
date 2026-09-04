@@ -160,19 +160,12 @@ module firewall 'br/public:avm/res/network/azure-firewall:0.10.1' = {
 @description('Trusted Azure CIDR ranges allowed through firewall rules.')
 param trustedAzureSubnets array = [
   '10.50.0.0/20' //Hub-VNet
-  '10.51.0.0/20' //Data-spoke
   '10.52.0.0/20' //Apps-spoke
-  '10.53.0.0/20' //DC-spoke (onprem-spoke)
+  '10.53.0.0/20' //DC-spoke
 ]
 
-@description('Trusted on-premises CIDR ranges allowed through firewall rules.')
-param trustedOnPremSubnets array = [
-  '10.2.1.0/24' //FortiWifi Network
-  '10.6.1.0/24' //HQ IPs
-  '172.16.110.0/24' //DC-1
-  '172.17.111.0/24' //DC-2
-  '192.168.0.0/24' //GWifi
-]
+@description('Trusted TenantB CIDR ranges allowed through the site-to-site VPN.')
+param trustedTenantBSubnets array = ['10.61.0.0/20']
 
 @description('Additional public source CIDR ranges allowed to use temporary DNAT rules. The natPublicIP parameter is always added when supplied.')
 param additionalPublicDnatNets array = []
@@ -180,7 +173,6 @@ var publicDnatNets = empty(natPublicIP) ? additionalPublicDnatNets : concat([nat
 
 @description('Umbrella or upstream DNS IP ranges used by firewall DNS rules.')
 param umbrellaDnsIpAddresses array = [
-  '172.17.111.0/24' //onprem DNS
   '168.63.129.16' //azuredns
 ]
 
@@ -209,9 +201,8 @@ param badPublicIpsAddressGroup array = [
 @description('Infrastructure server subnet CIDR ranges that receive restricted internet egress rules.')
 param infraServerSubnets array = [
   '10.50.0.0/24' //Hub-VNet
-  '10.51.0.0/24' //Data-spoke
   '10.52.0.0/24' //Apps-spoke
-  '10.53.0.0/24' //DC-spoke (onprem-spoke)
+  '10.53.0.0/24' //DC-spoke
 ]
 
 @description('Destination CIDR ranges allowed for selected UDP internet egress rules.')
@@ -239,12 +230,12 @@ resource trustedAzureIpGroup 'Microsoft.Network/ipGroups@2024-05-01' = {
   }
 }
 
-resource trustedOnPremIpGroup 'Microsoft.Network/ipGroups@2024-05-01' = {
-  name: 'ipg-trusted-onprem'
+resource trustedTenantBIpGroup 'Microsoft.Network/ipGroups@2024-05-01' = {
+  name: 'ipg-trusted-tenantb'
   location: location
   tags: { SecurityControl: 'Ignore' }
   properties: {
-    ipAddresses: trustedOnPremSubnets
+    ipAddresses: trustedTenantBSubnets
   }
 }
 resource publicDnatIpGroup 'Microsoft.Network/ipGroups@2024-05-01' = {
@@ -573,7 +564,7 @@ module networkRules 'br/public:avm/res/network/firewall-policy/rule-collection-g
             ] // Or restrict as needed
           }
           {
-            name: 'AllowAzureToOnPrem'
+            name: 'AllowAzureToTenantB'
             ruleType: 'NetworkRule'
             ipProtocols: [
               'TCP'
@@ -581,7 +572,7 @@ module networkRules 'br/public:avm/res/network/firewall-policy/rule-collection-g
               'ICMP'
             ]
             sourceIpGroups: [trustedAzureIpGroup.id]
-            destinationIpGroups: [trustedOnPremIpGroup.id]
+            destinationIpGroups: [trustedTenantBIpGroup.id]
             destinationPorts: [
               '22'
               '25'
@@ -616,14 +607,14 @@ module networkRules 'br/public:avm/res/network/firewall-policy/rule-collection-g
             ] // Or restrict as needed
           }
           {
-            name: 'AllowOnPremToAzure'
+            name: 'AllowTenantBToAzure'
             ruleType: 'NetworkRule'
             ipProtocols: [
               'TCP'
               'UDP'
               'ICMP'
             ]
-            sourceIpGroups: [trustedOnPremIpGroup.id]
+            sourceIpGroups: [trustedTenantBIpGroup.id]
             destinationIpGroups: [trustedAzureIpGroup.id]
             destinationPorts: [
               '22'

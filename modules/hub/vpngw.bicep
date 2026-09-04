@@ -4,7 +4,10 @@ param vpngwName string // Name of the VPN Gateway
 param hubVnetName string
 param vpngwSubnetName string
 param localGwName string
-param remoteVpnIp string
+@description('Static public IP of the TenantB FortiGate NVA.')
+param tenantBFortigatePublicIp string
+@description('TenantB prefixes reachable through the VPN connection.')
+param tenantBAddressPrefixes array = ['10.61.0.0/20']
 param logAnalyticsWorkspaceId string // Log Analytics Workspace ID for diagnostics
 @description('Resource ID of the user-assigned managed identity for the VPN GW')
 param vpngwIdentityId string
@@ -80,21 +83,10 @@ resource localGw 'Microsoft.Network/localNetworkGateways@2024-07-01' = {
     vpnGateway
   ]
   properties: {
-    gatewayIpAddress: remoteVpnIp // Use the public IP address assigned to on-premises VPN device
+    gatewayIpAddress: tenantBFortigatePublicIp
     localNetworkAddressSpace: {
-      addressPrefixes: [
-        '10.6.1.0/24' //HQ IPs
-        '172.16.110.0/24' // DC-1
-        '172.17.111.0/24' //DC-2
-        '10.2.1.0/24' // WIFI LAN
-      ] // add more as needed
+      addressPrefixes: tenantBAddressPrefixes
     }
-    /*/ ---- Add this block to enable BGP ----
-    bgpSettings: {
-      asn: 65010                   // <-- Your on-prem FortiGate ASN
-      bgpPeeringAddress: '169.254.21.2'   // Forti’s tunnel IP to FortiGate's BGP peer IP (tunnel interface)
-    }
-    /*/
   }
 }
 // ==================== RBAC Role Assignments for VPNGW ====================
@@ -212,4 +204,4 @@ output localgwId string = localGw.id
 output vpngwName string = vpnGateway.name
 output localgwName string = localGw.name
 output localgwPublicIP string = vpngwPublicIP.properties.ipAddress
-output remoteVpnIp string = remoteVpnIp
+output tenantBFortigatePublicIp string = tenantBFortigatePublicIp

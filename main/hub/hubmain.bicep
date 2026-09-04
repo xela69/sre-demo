@@ -23,6 +23,19 @@ param sreAgentPrincipalId string = ''
 param natPublicIP string //injected securely from main.bicep for NAT testing
 param accessKey string
 param sshPublicKey string //The SSH public key content injected securely from main.bicep or pipeline
+@description('Static public IP of the independently deployed TenantB FortiGate NVA.')
+param tenantBFortigatePublicIp string
+@description('TenantB prefixes reachable through the route-based IPsec tunnel.')
+param tenantBAddressPrefixes array = ['10.61.0.0/20']
+@description('MCAPS address spaces advertised to and routed from TenantB.')
+param mcapsAddressPrefixes array = [
+  '10.50.0.0/20'
+  '10.52.0.0/20'
+  '10.53.0.0/20'
+]
+@secure()
+@description('Site-to-site VPN pre-shared key. Inject securely and never emit as an output.')
+param vpnSharedKey string
 @description('Optional Entra object ID for a human Key Vault administrator. Leave empty to skip this role assignment.')
 param keyVaultAdminObjectId string = ''
 
@@ -85,6 +98,7 @@ module hubVnet '../../modules/hub/hubvnet.bicep' = if (deployHubVnet) {
     routeTableName: routeTableName
     fwPrivateIP: firewallPrivateIP
     enableFirewallRouting: deployFirewall
+    azureAddressSpaces: mcapsAddressPrefixes
     logAnalyticsWorkspaceId: deploylogsAnalytics ? logsAnalytics!.outputs.resourceId : ''
     enableDiagnostics: deploylogsAnalytics
   }
@@ -853,16 +867,7 @@ module dnsForwardingRuleset 'br/public:avm/res/network/dns-forwarding-ruleset:0.
     dnsForwardingRulesetOutboundEndpointResourceIds: [
       '${dnsResolver!.outputs.resourceId}/outboundEndpoints/outbound'
     ]
-    forwardingRules: [
-      {
-        name: 'rule-onprem-xelatech-net'
-        domainName: 'onprem.xelatech.net.'
-        targetDnsServers: [
-          { ipAddress: '172.16.110.5', port: 53 }
-        ]
-        forwardingRuleState: 'Enabled'
-      }
-    ]
+    forwardingRules: []
     virtualNetworkLinks: [
       {
         virtualNetworkResourceId: hubVnet!.outputs.vnetId
@@ -896,6 +901,8 @@ module firewall '../../modules/hub/firewall-vnet.bicep' = if (deployFirewall) {
     firewallPrincipalId: mgntIdentity!.outputs.firewallPrincipalId // pass the principalId of the Firewall Managed Identity
     firewallIdentityId: mgntIdentity!.outputs.firewallIdentityId // pass the resource ID of the Firewall Managed Identity
     routeTableName: routeTableName
+    trustedAzureSubnets: mcapsAddressPrefixes
+    trustedTenantBSubnets: tenantBAddressPrefixes
   }
 }
 // Key Vault module reference [AVM]
@@ -1069,15 +1076,9 @@ module localGw 'br/public:avm/res/network/local-network-gateway:0.4.0' = if (dep
   params: {
     name: 'xelalocalgw'
     location: hubLocation
-    localGatewayPublicIpAddress: natPublicIP
+    localGatewayPublicIpAddress: tenantBFortigatePublicIp
     localNetworkAddressSpace: {
-      addressPrefixes: [
-        '10.6.1.0/24'
-        '172.16.110.0/24'
-        '172.17.111.0/24'
-        '10.2.1.0/24'
-        '192.168.0.0/24'
-      ]
+      addressPrefixes: tenantBAddressPrefixes
     }
     tags: { SecurityControl: 'Ignore', CostControl: 'Ignore' }
   }
@@ -1095,7 +1096,7 @@ module vnpConnection 'br/public:avm/res/network/connection:0.1.6' = if (deployVp
     }
     localNetworkGateway2ResourceId: localGw!.outputs.resourceId
     connectionType: 'IPsec'
-    vpnSharedKey: accessKey
+    vpnSharedKey: vpnSharedKey
     connectionProtocol: 'IKEv2'
     enableBgp: false
     dpdTimeoutSeconds: 45

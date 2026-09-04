@@ -1,10 +1,7 @@
-targetScope = 'subscription'
+targetScope = 'resourceGroup'
 
 @description('Azure region for the TenantB source environment.')
 param location string = 'westus2'
-
-@description('Resource group containing the TenantB network and FortiGate NVA.')
-param resourceGroupName string = 'TenantB-Network-RG'
 
 @description('TenantB virtual network name.')
 param vnetName string = 'TenantB-VNet'
@@ -46,21 +43,9 @@ var imagePublisher = 'fortinet'
 var imageOffer = 'fortinet_fortigate-vm_v5'
 var imageSku = 'fortinet_fg-vm_payg_2023'
 
-resource networkResourceGroup 'Microsoft.Resources/resourceGroups@2024-11-01' = {
-  name: resourceGroupName
-  location: location
-  tags: {
-    Environment: 'Lab'
-    Owner: 'Xelatech'
-    Service: 'TenantB source network'
-    SecurityControl: 'FortiGate'
-  }
-}
-
 resource externalNsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   name: 'TenantB-FortiGate-External-NSG'
   location: location
-  scope: networkResourceGroup
   properties: {
     securityRules: concat(
       [
@@ -118,7 +103,6 @@ resource externalNsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
 resource internalNsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   name: 'TenantB-Internal-NSG'
   location: location
-  scope: networkResourceGroup
   properties: {
     securityRules: [
       {
@@ -141,7 +125,6 @@ resource internalNsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
 resource workloadRouteTable 'Microsoft.Network/routeTables@2024-05-01' = {
   name: 'TenantB-Workload-RT'
   location: location
-  scope: networkResourceGroup
   properties: {
     disableBgpRoutePropagation: true
     routes: [
@@ -160,7 +143,6 @@ resource workloadRouteTable 'Microsoft.Network/routeTables@2024-05-01' = {
 resource tenantBVnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
   name: vnetName
   location: location
-  scope: networkResourceGroup
   properties: {
     addressSpace: {
       addressPrefixes: [tenantBAddressSpace]
@@ -212,7 +194,6 @@ resource tenantBVnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
 resource fortigatePublicIp 'Microsoft.Network/publicIPAddresses@2024-05-01' = {
   name: 'TenantB-FortiGate-PIP'
   location: location
-  scope: networkResourceGroup
   sku: {
     name: 'Standard'
   }
@@ -229,7 +210,6 @@ resource fortigatePublicIp 'Microsoft.Network/publicIPAddresses@2024-05-01' = {
 resource fortigateExternalNic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
   name: '${fortigateName}-external-nic'
   location: location
-  scope: networkResourceGroup
   properties: {
     enableIPForwarding: true
     ipConfigurations: [
@@ -240,12 +220,7 @@ resource fortigateExternalNic 'Microsoft.Network/networkInterfaces@2024-05-01' =
           privateIPAllocationMethod: 'Static'
           privateIPAddress: fortigateExternalPrivateIp
           subnet: {
-            id: resourceId(
-              resourceGroupName,
-              'Microsoft.Network/virtualNetworks/subnets',
-              vnetName,
-              'FortiGateExternalSubnet'
-            )
+            id: resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName, 'FortiGateExternalSubnet')
           }
           publicIPAddress: {
             id: fortigatePublicIp.id
@@ -260,7 +235,6 @@ resource fortigateExternalNic 'Microsoft.Network/networkInterfaces@2024-05-01' =
 resource fortigateInternalNic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
   name: '${fortigateName}-internal-nic'
   location: location
-  scope: networkResourceGroup
   properties: {
     enableIPForwarding: true
     ipConfigurations: [
@@ -271,12 +245,7 @@ resource fortigateInternalNic 'Microsoft.Network/networkInterfaces@2024-05-01' =
           privateIPAllocationMethod: 'Static'
           privateIPAddress: fortigateInternalPrivateIp
           subnet: {
-            id: resourceId(
-              resourceGroupName,
-              'Microsoft.Network/virtualNetworks/subnets',
-              vnetName,
-              'FortiGateInternalSubnet'
-            )
+            id: resourceId('Microsoft.Network/virtualNetworks/subnets', vnetName, 'FortiGateInternalSubnet')
           }
         }
       }
@@ -288,7 +257,6 @@ resource fortigateInternalNic 'Microsoft.Network/networkInterfaces@2024-05-01' =
 resource fortigateVm 'Microsoft.Compute/virtualMachines@2024-11-01' = {
   name: fortigateName
   location: location
-  scope: networkResourceGroup
   plan: {
     name: imageSku
     product: imageOffer

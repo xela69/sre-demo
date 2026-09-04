@@ -1,4 +1,4 @@
-// vpn connection between the VPN Gateway and the on-premises network
+// VPN connection between the MCAPS VPN Gateway and TenantB FortiGate
 
 @secure()
 param vpnSharedKey string
@@ -28,7 +28,7 @@ param ipsecPolicies array = [
     ipsecIntegrity: 'GCMAES256'
     ikeEncryption: 'AES256'
     ikeIntegrity: 'SHA256'
-    dhGroup: 'DHGroup2'
+    dhGroup: 'DHGroup14'
     pfsGroup: 'None'
   }
 ]
