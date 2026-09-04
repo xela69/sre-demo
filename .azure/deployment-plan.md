@@ -1,6 +1,6 @@
 # Azure Deployment Validation Plan
 
-**Status:** Validation Blocked
+**Status:** Validation In Progress
 **Mode:** Validate existing infrastructure orchestration
 **IaC:** Bicep
 **Execution boundary:** Compile, ARM validation, and what-if only. Do not deploy resources.
@@ -13,11 +13,13 @@ Validate the existing orchestrated phases in dependency order:
 2. Management-group policy: `platform/policy/main.bicep` at management-group scope.
 3. Platform identity: `platform/identity/main.bicep` at subscription scope.
 4. Hub: `main/hub/hubmain.bicep` in subscription `ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9`, location `westus2`.
-5. Data spoke: `main/data-spoke/datamain.bicep` in subscription `8de6c6e8-53af-4ded-a480-fd20c6093e78`, location `westus3`.
+5. TenantB source network: `main/tenantb/tenantbmain.bicep` in the Xelatech tenant subscription `ed70102f-f789-4d4e-ac00-074283844a0c`, location `westus2`.
 6. DC spoke: `main/dc-spoke/dcmain.bicep` in subscription `8de6c6e8-53af-4ded-a480-fd20c6093e78`, location `centralus`.
 7. Apps spoke: `main/apps-spoke/appsmain.bicep` in subscription `42021d44-97d2-47a1-8245-a77149dda4c3`, location `centralus`.
 
 Post-deployment scripts are excluded because they mutate resources and are not ARM/Bicep what-if phases.
+
+The former MCAPS data-spoke phase is retired from the active architecture. TenantB and MCAPS are validated independently and exchange only VPN endpoint metadata, static address prefixes, and an out-of-band PSK.
 
 ## 2. Existing Inputs
 

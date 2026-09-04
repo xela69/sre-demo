@@ -1,0 +1,303 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.46.1.21595",
+      "templateHash": "16067003494952843630"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string"
+    },
+    "vpngwName": {
+      "type": "string"
+    },
+    "hubVnetName": {
+      "type": "string"
+    },
+    "vpngwSubnetName": {
+      "type": "string"
+    },
+    "localGwName": {
+      "type": "string"
+    },
+    "tenantBFortigatePublicIp": {
+      "type": "string",
+      "metadata": {
+        "description": "Static public IP of the TenantB FortiGate NVA."
+      }
+    },
+    "tenantBAddressPrefixes": {
+      "type": "array",
+      "defaultValue": [
+        "10.61.0.0/20"
+      ],
+      "metadata": {
+        "description": "TenantB prefixes reachable through the VPN connection."
+      }
+    },
+    "logAnalyticsWorkspaceId": {
+      "type": "string"
+    },
+    "vpngwIdentityId": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource ID of the user-assigned managed identity for the VPN GW"
+      }
+    },
+    "vpngwPrincipalId": {
+      "type": "string",
+      "metadata": {
+        "description": "Principal/Object ID of the VPN GW UAMI (from mgnt-Identity outputs)"
+      }
+    },
+    "roles": {
+      "type": "array",
+      "defaultValue": [
+        "NetworkContributor",
+        "Reader",
+        "MonitoringReader"
+      ],
+      "metadata": {
+        "description": "List of Key Vault role short names to assign (e.g., \"SecretsUser\", \"Reader\")"
+      }
+    },
+    "IPDiagSettingName": {
+      "type": "string",
+      "defaultValue": "[format('diagPIP-{0}', parameters('vpngwName'))]",
+      "metadata": {
+        "description": "Name of the diagnostic setting Public IP"
+      }
+    },
+    "vpnDiagSettingName": {
+      "type": "string",
+      "defaultValue": "[format('diagVPN-{0}', parameters('vpngwName'))]",
+      "metadata": {
+        "description": "Name of the diagnostic setting (must be unique per resource)."
+      }
+    }
+  },
+  "variables": {
+    "roleDefinitionMap": {
+      "NetworkContributor": "e022efe7-f5ba-4159-bbe4-b44f577e9b61",
+      "Reader": "acdd72a7-3385-48ef-bd42-f606fba81ae7",
+      "MonitoringReader": "43d0d8ad-25c7-4714-9337-8ba259a9fe05"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2024-07-01",
+      "name": "[toLower(format('{0}pip{1}', parameters('vpngwName'), substring(uniqueString(resourceGroup().id), 0, 4)))]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "SecurityControl": "Ignore",
+        "CostControl": "Ignore"
+      },
+      "sku": {
+        "name": "Standard",
+        "tier": "Regional"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Static",
+        "dnsSettings": {
+          "domainNameLabel": "[toLower(format('xelagw{0}', substring(uniqueString(resourceGroup().id), 0, 3)))]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworkGateways",
+      "apiVersion": "2024-07-01",
+      "name": "[format('{0}{1}', parameters('vpngwName'), take(uniqueString(resourceGroup().id), 4))]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "SecurityControl": "Ignore",
+        "CostControl": "Ignore"
+      },
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', parameters('vpngwIdentityId'))]": {}
+        }
+      },
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "gw-ipconfig",
+            "properties": {
+              "subnet": {
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('hubVnetName'), parameters('vpngwSubnetName'))]"
+              },
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', toLower(format('{0}pip{1}', parameters('vpngwName'), substring(uniqueString(resourceGroup().id), 0, 4))))]"
+              }
+            }
+          }
+        ],
+        "gatewayType": "Vpn",
+        "vpnType": "RouteBased",
+        "enableBgp": false,
+        "sku": {
+          "name": "VpnGw1",
+          "tier": "VpnGw1"
+        },
+        "vpnGatewayGeneration": "Generation1"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', toLower(format('{0}pip{1}', parameters('vpngwName'), substring(uniqueString(resourceGroup().id), 0, 4))))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/localNetworkGateways",
+      "apiVersion": "2024-07-01",
+      "name": "[toLower(format('{0}', parameters('localGwName')))]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "SecurityControl": "Ignore",
+        "CostControl": "Ignore"
+      },
+      "properties": {
+        "gatewayIpAddress": "[parameters('tenantBFortigatePublicIp')]",
+        "localNetworkAddressSpace": {
+          "addressPrefixes": "[parameters('tenantBAddressPrefixes')]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworkGateways', format('{0}{1}', parameters('vpngwName'), take(uniqueString(resourceGroup().id), 4)))]"
+      ]
+    },
+    {
+      "copy": {
+        "name": "roleAssignments",
+        "count": "[length(parameters('roles'))]"
+      },
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[resourceId('Microsoft.Network/virtualNetworkGateways', format('{0}{1}', parameters('vpngwName'), take(uniqueString(resourceGroup().id), 4)))]",
+      "name": "[guid(resourceId('Microsoft.Network/virtualNetworkGateways', format('{0}{1}', parameters('vpngwName'), take(uniqueString(resourceGroup().id), 4))), parameters('vpngwIdentityId'), parameters('roles')[copyIndex()])]",
+      "properties": {
+        "principalId": "[parameters('vpngwPrincipalId')]",
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('roleDefinitionMap')[parameters('roles')[copyIndex()]])]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworkGateways', format('{0}{1}', parameters('vpngwName'), take(uniqueString(resourceGroup().id), 4)))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[resourceId('Microsoft.Network/publicIPAddresses', toLower(format('{0}pip{1}', parameters('vpngwName'), substring(uniqueString(resourceGroup().id), 0, 4))))]",
+      "name": "[parameters('IPDiagSettingName')]",
+      "properties": {
+        "workspaceId": "[parameters('logAnalyticsWorkspaceId')]",
+        "logs": [
+          {
+            "category": "DDoSProtectionNotifications",
+            "enabled": true,
+            "retentionPolicy": {
+              "enabled": false,
+              "days": 0
+            }
+          },
+          {
+            "category": "DDoSMitigationFlowLogs",
+            "enabled": true,
+            "retentionPolicy": {
+              "enabled": false,
+              "days": 0
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', toLower(format('{0}pip{1}', parameters('vpngwName'), substring(uniqueString(resourceGroup().id), 0, 4))))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[resourceId('Microsoft.Network/virtualNetworkGateways', format('{0}{1}', parameters('vpngwName'), take(uniqueString(resourceGroup().id), 4)))]",
+      "name": "[parameters('vpnDiagSettingName')]",
+      "properties": {
+        "workspaceId": "[parameters('logAnalyticsWorkspaceId')]",
+        "logs": [
+          {
+            "category": "TunnelDiagnosticLog",
+            "enabled": true,
+            "retentionPolicy": {
+              "enabled": false,
+              "days": 0
+            }
+          },
+          {
+            "category": "RouteDiagnosticLog",
+            "enabled": true,
+            "retentionPolicy": {
+              "enabled": false,
+              "days": 0
+            }
+          },
+          {
+            "category": "IKEDiagnosticLog",
+            "enabled": true,
+            "retentionPolicy": {
+              "enabled": false,
+              "days": 0
+            }
+          },
+          {
+            "category": "P2SDiagnosticLog",
+            "enabled": true,
+            "retentionPolicy": {
+              "enabled": false,
+              "days": 0
+            }
+          }
+        ],
+        "metrics": [
+          {
+            "category": "AllMetrics",
+            "enabled": true,
+            "retentionPolicy": {
+              "enabled": false,
+              "days": 0
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworkGateways', format('{0}{1}', parameters('vpngwName'), take(uniqueString(resourceGroup().id), 4)))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "vpngwId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Network/virtualNetworkGateways', format('{0}{1}', parameters('vpngwName'), take(uniqueString(resourceGroup().id), 4)))]"
+    },
+    "localgwId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Network/localNetworkGateways', toLower(format('{0}', parameters('localGwName'))))]"
+    },
+    "vpngwName": {
+      "type": "string",
+      "value": "[format('{0}{1}', parameters('vpngwName'), take(uniqueString(resourceGroup().id), 4))]"
+    },
+    "localgwName": {
+      "type": "string",
+      "value": "[toLower(format('{0}', parameters('localGwName')))]"
+    },
+    "localgwPublicIP": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', toLower(format('{0}pip{1}', parameters('vpngwName'), substring(uniqueString(resourceGroup().id), 0, 4)))), '2024-07-01').ipAddress]"
+    },
+    "tenantBFortigatePublicIp": {
+      "type": "string",
+      "value": "[parameters('tenantBFortigatePublicIp')]"
+    }
+  }
+}

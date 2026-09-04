@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "7471011131011017673"
+      "templateHash": "3498668243472240381"
     }
   },
   "parameters": {
@@ -80,6 +80,38 @@
     },
     "sshPublicKey": {
       "type": "string"
+    },
+    "tenantBFortigatePublicIp": {
+      "type": "string",
+      "metadata": {
+        "description": "Static public IP of the independently deployed TenantB FortiGate NVA."
+      }
+    },
+    "tenantBAddressPrefixes": {
+      "type": "array",
+      "defaultValue": [
+        "10.61.0.0/20"
+      ],
+      "metadata": {
+        "description": "TenantB prefixes reachable through the route-based IPsec tunnel."
+      }
+    },
+    "mcapsAddressPrefixes": {
+      "type": "array",
+      "defaultValue": [
+        "10.50.0.0/20",
+        "10.52.0.0/20",
+        "10.53.0.0/20"
+      ],
+      "metadata": {
+        "description": "MCAPS address spaces advertised to and routed from TenantB."
+      }
+    },
+    "vpnSharedKey": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Site-to-site VPN pre-shared key. Inject securely and never emit as an output."
+      }
     },
     "keyVaultAdminObjectId": {
       "type": "string",
@@ -359,6 +391,9 @@
           },
           "enableFirewallRouting": {
             "value": "[parameters('deployFirewall')]"
+          },
+          "azureAddressSpaces": {
+            "value": "[parameters('mcapsAddressPrefixes')]"
           },
           "logAnalyticsWorkspaceId": "[if(parameters('deploylogsAnalytics'), createObject('value', reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('monitorRgName')), 'Microsoft.Resources/deployments', 'logsModule'), '2025-04-01').outputs.resourceId.value), createObject('value', ''))]",
           "enableDiagnostics": {
@@ -36094,19 +36129,7 @@
             ]
           },
           "forwardingRules": {
-            "value": [
-              {
-                "name": "rule-onprem-xelatech-net",
-                "domainName": "onprem.xelatech.net.",
-                "targetDnsServers": [
-                  {
-                    "ipAddress": "172.16.110.5",
-                    "port": 53
-                  }
-                ],
-                "forwardingRuleState": "Enabled"
-              }
-            ]
+            "value": []
           },
           "virtualNetworkLinks": {
             "value": [
@@ -36852,6 +36875,12 @@
           },
           "routeTableName": {
             "value": "[parameters('routeTableName')]"
+          },
+          "trustedAzureSubnets": {
+            "value": "[parameters('mcapsAddressPrefixes')]"
+          },
+          "trustedTenantBSubnets": {
+            "value": "[parameters('tenantBAddressPrefixes')]"
           }
         },
         "template": {
@@ -36861,7 +36890,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.46.1.21595",
-              "templateHash": "15055925429427810045"
+              "templateHash": "15198766616683088978"
             }
           },
           "parameters": {
@@ -36952,7 +36981,6 @@
               "type": "array",
               "defaultValue": [
                 "10.50.0.0/20",
-                "10.51.0.0/20",
                 "10.52.0.0/20",
                 "10.53.0.0/20"
               ],
@@ -36960,17 +36988,13 @@
                 "description": "Trusted Azure CIDR ranges allowed through firewall rules."
               }
             },
-            "trustedOnPremSubnets": {
+            "trustedTenantBSubnets": {
               "type": "array",
               "defaultValue": [
-                "10.2.1.0/24",
-                "10.6.1.0/24",
-                "172.16.110.0/24",
-                "172.17.111.0/24",
-                "192.168.0.0/24"
+                "10.61.0.0/20"
               ],
               "metadata": {
-                "description": "Trusted on-premises CIDR ranges allowed through firewall rules."
+                "description": "Trusted TenantB CIDR ranges allowed through the site-to-site VPN."
               }
             },
             "additionalPublicDnatNets": {
@@ -36983,7 +37007,6 @@
             "umbrellaDnsIpAddresses": {
               "type": "array",
               "defaultValue": [
-                "172.17.111.0/24",
                 "168.63.129.16"
               ],
               "metadata": {
@@ -37020,7 +37043,6 @@
               "type": "array",
               "defaultValue": [
                 "10.50.0.0/24",
-                "10.51.0.0/24",
                 "10.52.0.0/24",
                 "10.53.0.0/24"
               ],
@@ -37130,13 +37152,13 @@
             {
               "type": "Microsoft.Network/ipGroups",
               "apiVersion": "2024-05-01",
-              "name": "ipg-trusted-onprem",
+              "name": "ipg-trusted-tenantb",
               "location": "[parameters('location')]",
               "tags": {
                 "SecurityControl": "Ignore"
               },
               "properties": {
-                "ipAddresses": "[parameters('trustedOnPremSubnets')]"
+                "ipAddresses": "[parameters('trustedTenantBSubnets')]"
               }
             },
             {
@@ -40811,7 +40833,7 @@
                             ]
                           },
                           {
-                            "name": "AllowAzureToOnPrem",
+                            "name": "AllowAzureToTenantB",
                             "ruleType": "NetworkRule",
                             "ipProtocols": [
                               "TCP",
@@ -40822,7 +40844,7 @@
                               "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-azure')]"
                             ],
                             "destinationIpGroups": [
-                              "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-onprem')]"
+                              "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-tenantb')]"
                             ],
                             "destinationPorts": [
                               "22",
@@ -40858,7 +40880,7 @@
                             ]
                           },
                           {
-                            "name": "AllowOnPremToAzure",
+                            "name": "AllowTenantBToAzure",
                             "ruleType": "NetworkRule",
                             "ipProtocols": [
                               "TCP",
@@ -40866,7 +40888,7 @@
                               "ICMP"
                             ],
                             "sourceIpGroups": [
-                              "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-onprem')]"
+                              "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-tenantb')]"
                             ],
                             "destinationIpGroups": [
                               "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-azure')]"
@@ -41107,7 +41129,7 @@
                 "[resourceId('Microsoft.Network/ipGroups', 'ipg-internet-tcp-ports')]",
                 "[resourceId('Microsoft.Network/ipGroups', 'ipg-internet-udp-ports')]",
                 "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-azure')]",
-                "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-onprem')]"
+                "[resourceId('Microsoft.Network/ipGroups', 'ipg-trusted-tenantb')]"
               ]
             },
             {
@@ -46960,17 +46982,11 @@
             "value": "[parameters('hubLocation')]"
           },
           "localGatewayPublicIpAddress": {
-            "value": "[parameters('natPublicIP')]"
+            "value": "[parameters('tenantBFortigatePublicIp')]"
           },
           "localNetworkAddressSpace": {
             "value": {
-              "addressPrefixes": [
-                "10.6.1.0/24",
-                "172.16.110.0/24",
-                "172.17.111.0/24",
-                "10.2.1.0/24",
-                "192.168.0.0/24"
-              ]
+              "addressPrefixes": "[parameters('tenantBAddressPrefixes')]"
             }
           },
           "tags": {
@@ -47380,7 +47396,7 @@
             "value": "IPsec"
           },
           "vpnSharedKey": {
-            "value": "[parameters('accessKey')]"
+            "value": "[parameters('vpnSharedKey')]"
           },
           "connectionProtocol": {
             "value": "IKEv2"

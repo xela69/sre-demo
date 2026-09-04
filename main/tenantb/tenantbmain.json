@@ -1,0 +1,536 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.46.1.21595",
+      "templateHash": "8686560285378315431"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string",
+      "defaultValue": "westus2",
+      "metadata": {
+        "description": "Azure region for the TenantB source environment."
+      }
+    },
+    "resourceGroupName": {
+      "type": "string",
+      "defaultValue": "TenantB-Network-RG",
+      "metadata": {
+        "description": "Resource group containing the TenantB network and FortiGate NVA."
+      }
+    },
+    "vnetName": {
+      "type": "string",
+      "defaultValue": "TenantB-VNet",
+      "metadata": {
+        "description": "TenantB virtual network name."
+      }
+    },
+    "tenantBAddressSpace": {
+      "type": "string",
+      "defaultValue": "10.61.0.0/20",
+      "metadata": {
+        "description": "TenantB address space. It must not overlap MCAPS."
+      }
+    },
+    "mcapsAddressPrefixes": {
+      "type": "array",
+      "defaultValue": [
+        "10.50.0.0/20",
+        "10.52.0.0/20",
+        "10.53.0.0/20"
+      ],
+      "metadata": {
+        "description": "MCAPS prefixes routed through the FortiGate IPsec tunnel."
+      }
+    },
+    "managementSourcePrefixes": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Public CIDRs allowed to administer FortiGate over HTTPS and SSH. Leave empty to deny public management."
+      }
+    },
+    "adminUsername": {
+      "type": "string",
+      "defaultValue": "fortiadmin",
+      "metadata": {
+        "description": "FortiGate administrator username."
+      }
+    },
+    "adminPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "FortiGate administrator password. Supply securely at validation or deployment time."
+      }
+    },
+    "fortigateVmSize": {
+      "type": "string",
+      "defaultValue": "Standard_D2s_v5",
+      "metadata": {
+        "description": "Low-cost FortiGate VM size with two supported network interfaces."
+      }
+    },
+    "fortigateImageVersion": {
+      "type": "string",
+      "defaultValue": "7.4.11",
+      "metadata": {
+        "description": "Pinned FortiGate PAYG image version validated in westus2."
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2024-11-01",
+      "name": "[parameters('resourceGroupName')]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "Environment": "Lab",
+        "Owner": "Xelatech",
+        "Service": "TenantB source network",
+        "SecurityControl": "FortiGate"
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "tenantb-resources",
+      "resourceGroup": "[parameters('resourceGroupName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "vnetName": {
+            "value": "[parameters('vnetName')]"
+          },
+          "tenantBAddressSpace": {
+            "value": "[parameters('tenantBAddressSpace')]"
+          },
+          "mcapsAddressPrefixes": {
+            "value": "[parameters('mcapsAddressPrefixes')]"
+          },
+          "managementSourcePrefixes": {
+            "value": "[parameters('managementSourcePrefixes')]"
+          },
+          "adminUsername": {
+            "value": "[parameters('adminUsername')]"
+          },
+          "adminPassword": {
+            "value": "[parameters('adminPassword')]"
+          },
+          "fortigateVmSize": {
+            "value": "[parameters('fortigateVmSize')]"
+          },
+          "fortigateImageVersion": {
+            "value": "[parameters('fortigateImageVersion')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.46.1.21595",
+              "templateHash": "17317466706082010821"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string",
+              "defaultValue": "westus2",
+              "metadata": {
+                "description": "Azure region for the TenantB source environment."
+              }
+            },
+            "vnetName": {
+              "type": "string",
+              "defaultValue": "TenantB-VNet",
+              "metadata": {
+                "description": "TenantB virtual network name."
+              }
+            },
+            "tenantBAddressSpace": {
+              "type": "string",
+              "defaultValue": "10.61.0.0/20",
+              "metadata": {
+                "description": "TenantB address space. It must not overlap MCAPS."
+              }
+            },
+            "mcapsAddressPrefixes": {
+              "type": "array",
+              "defaultValue": [
+                "10.50.0.0/20",
+                "10.52.0.0/20",
+                "10.53.0.0/20"
+              ],
+              "metadata": {
+                "description": "MCAPS prefixes routed through the FortiGate IPsec tunnel."
+              }
+            },
+            "managementSourcePrefixes": {
+              "type": "array",
+              "defaultValue": [],
+              "metadata": {
+                "description": "Public CIDRs allowed to administer FortiGate over HTTPS and SSH. Leave empty to deny public management."
+              }
+            },
+            "adminUsername": {
+              "type": "string",
+              "defaultValue": "fortiadmin",
+              "metadata": {
+                "description": "FortiGate administrator username."
+              }
+            },
+            "adminPassword": {
+              "type": "securestring",
+              "metadata": {
+                "description": "FortiGate administrator password. Supply securely at validation or deployment time."
+              }
+            },
+            "fortigateVmSize": {
+              "type": "string",
+              "defaultValue": "Standard_D2s_v5",
+              "metadata": {
+                "description": "Low-cost FortiGate VM size with two supported network interfaces."
+              }
+            },
+            "fortigateImageVersion": {
+              "type": "string",
+              "defaultValue": "7.4.11",
+              "metadata": {
+                "description": "Pinned FortiGate PAYG image version validated in westus2."
+              }
+            }
+          },
+          "variables": {
+            "externalSubnetPrefix": "10.61.0.0/27",
+            "internalSubnetPrefix": "10.61.0.32/27",
+            "managementSubnetPrefix": "10.61.1.0/24",
+            "workloadSubnetPrefix": "10.61.2.0/23",
+            "fortigateExternalPrivateIp": "10.61.0.4",
+            "fortigateInternalPrivateIp": "10.61.0.36",
+            "fortigateName": "tenantb-fortigate",
+            "imagePublisher": "fortinet",
+            "imageOffer": "fortinet_fortigate-vm_v5",
+            "imageSku": "fortinet_fg-vm_payg_2023"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2024-05-01",
+              "name": "TenantB-FortiGate-External-NSG",
+              "location": "[parameters('location')]",
+              "properties": {
+                "securityRules": "[concat(createArray(createObject('name', 'Allow-IKE', 'properties', createObject('priority', 100, 'access', 'Allow', 'direction', 'Inbound', 'protocol', 'Udp', 'sourcePortRange', '*', 'destinationPortRange', '500', 'sourceAddressPrefix', 'Internet', 'destinationAddressPrefix', '*')), createObject('name', 'Allow-IPsec-NATT', 'properties', createObject('priority', 110, 'access', 'Allow', 'direction', 'Inbound', 'protocol', 'Udp', 'sourcePortRange', '*', 'destinationPortRange', '4500', 'sourceAddressPrefix', 'Internet', 'destinationAddressPrefix', '*'))), if(empty(parameters('managementSourcePrefixes')), createArray(), createArray(createObject('name', 'Allow-Restricted-Management', 'properties', createObject('priority', 120, 'access', 'Allow', 'direction', 'Inbound', 'protocol', 'Tcp', 'sourcePortRange', '*', 'destinationPortRanges', createArray('22', '443'), 'sourceAddressPrefixes', parameters('managementSourcePrefixes'), 'destinationAddressPrefix', '*')))))]"
+              }
+            },
+            {
+              "type": "Microsoft.Network/networkSecurityGroups",
+              "apiVersion": "2024-05-01",
+              "name": "TenantB-Internal-NSG",
+              "location": "[parameters('location')]",
+              "properties": {
+                "securityRules": [
+                  {
+                    "name": "Allow-TenantB-VNet",
+                    "properties": {
+                      "priority": 100,
+                      "access": "Allow",
+                      "direction": "Inbound",
+                      "protocol": "*",
+                      "sourcePortRange": "*",
+                      "destinationPortRange": "*",
+                      "sourceAddressPrefix": "VirtualNetwork",
+                      "destinationAddressPrefix": "VirtualNetwork"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Network/routeTables",
+              "apiVersion": "2024-05-01",
+              "name": "TenantB-Workload-RT",
+              "location": "[parameters('location')]",
+              "properties": {
+                "copy": [
+                  {
+                    "name": "routes",
+                    "count": "[length(parameters('mcapsAddressPrefixes'))]",
+                    "input": {
+                      "name": "[format('To-MCAPS-{0}', copyIndex('routes'))]",
+                      "properties": {
+                        "addressPrefix": "[parameters('mcapsAddressPrefixes')[copyIndex('routes')]]",
+                        "nextHopType": "VirtualAppliance",
+                        "nextHopIpAddress": "[variables('fortigateInternalPrivateIp')]"
+                      }
+                    }
+                  }
+                ],
+                "disableBgpRoutePropagation": true
+              }
+            },
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2024-05-01",
+              "name": "[parameters('vnetName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "[parameters('tenantBAddressSpace')]"
+                  ]
+                },
+                "subnets": [
+                  {
+                    "name": "FortiGateExternalSubnet",
+                    "properties": {
+                      "addressPrefix": "[variables('externalSubnetPrefix')]",
+                      "networkSecurityGroup": {
+                        "id": "[resourceId('Microsoft.Network/networkSecurityGroups', 'TenantB-FortiGate-External-NSG')]"
+                      }
+                    }
+                  },
+                  {
+                    "name": "FortiGateInternalSubnet",
+                    "properties": {
+                      "addressPrefix": "[variables('internalSubnetPrefix')]",
+                      "networkSecurityGroup": {
+                        "id": "[resourceId('Microsoft.Network/networkSecurityGroups', 'TenantB-Internal-NSG')]"
+                      }
+                    }
+                  },
+                  {
+                    "name": "ManagementSubnet",
+                    "properties": {
+                      "addressPrefix": "[variables('managementSubnetPrefix')]",
+                      "networkSecurityGroup": {
+                        "id": "[resourceId('Microsoft.Network/networkSecurityGroups', 'TenantB-Internal-NSG')]"
+                      }
+                    }
+                  },
+                  {
+                    "name": "SourceWorkloadSubnet",
+                    "properties": {
+                      "addressPrefix": "[variables('workloadSubnetPrefix')]",
+                      "networkSecurityGroup": {
+                        "id": "[resourceId('Microsoft.Network/networkSecurityGroups', 'TenantB-Internal-NSG')]"
+                      },
+                      "routeTable": {
+                        "id": "[resourceId('Microsoft.Network/routeTables', 'TenantB-Workload-RT')]"
+                      }
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', 'TenantB-FortiGate-External-NSG')]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', 'TenantB-Internal-NSG')]",
+                "[resourceId('Microsoft.Network/routeTables', 'TenantB-Workload-RT')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/publicIPAddresses",
+              "apiVersion": "2024-05-01",
+              "name": "TenantB-FortiGate-PIP",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Standard"
+              },
+              "properties": {
+                "publicIPAllocationMethod": "Static",
+                "publicIPAddressVersion": "IPv4"
+              },
+              "tags": {
+                "Environment": "Lab",
+                "Service": "TenantB VPN endpoint"
+              }
+            },
+            {
+              "type": "Microsoft.Network/networkInterfaces",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}-external-nic', variables('fortigateName'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "enableIPForwarding": true,
+                "ipConfigurations": [
+                  {
+                    "name": "external-ipconfig",
+                    "properties": {
+                      "primary": true,
+                      "privateIPAllocationMethod": "Static",
+                      "privateIPAddress": "[variables('fortigateExternalPrivateIp')]",
+                      "subnet": {
+                        "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), 'FortiGateExternalSubnet')]"
+                      },
+                      "publicIPAddress": {
+                        "id": "[resourceId('Microsoft.Network/publicIPAddresses', 'TenantB-FortiGate-PIP')]"
+                      }
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', 'TenantB-FortiGate-PIP')]",
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/networkInterfaces",
+              "apiVersion": "2024-05-01",
+              "name": "[format('{0}-internal-nic', variables('fortigateName'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "enableIPForwarding": true,
+                "ipConfigurations": [
+                  {
+                    "name": "internal-ipconfig",
+                    "properties": {
+                      "primary": true,
+                      "privateIPAllocationMethod": "Static",
+                      "privateIPAddress": "[variables('fortigateInternalPrivateIp')]",
+                      "subnet": {
+                        "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), 'FortiGateInternalSubnet')]"
+                      }
+                    }
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Compute/virtualMachines",
+              "apiVersion": "2024-11-01",
+              "name": "[variables('fortigateName')]",
+              "location": "[parameters('location')]",
+              "plan": {
+                "name": "[variables('imageSku')]",
+                "product": "[variables('imageOffer')]",
+                "publisher": "[variables('imagePublisher')]"
+              },
+              "properties": {
+                "hardwareProfile": {
+                  "vmSize": "[parameters('fortigateVmSize')]"
+                },
+                "storageProfile": {
+                  "imageReference": {
+                    "publisher": "[variables('imagePublisher')]",
+                    "offer": "[variables('imageOffer')]",
+                    "sku": "[variables('imageSku')]",
+                    "version": "[parameters('fortigateImageVersion')]"
+                  },
+                  "osDisk": {
+                    "createOption": "FromImage",
+                    "managedDisk": {
+                      "storageAccountType": "StandardSSD_LRS"
+                    }
+                  }
+                },
+                "osProfile": {
+                  "computerName": "[variables('fortigateName')]",
+                  "adminUsername": "[parameters('adminUsername')]",
+                  "adminPassword": "[parameters('adminPassword')]",
+                  "linuxConfiguration": {
+                    "disablePasswordAuthentication": false
+                  }
+                },
+                "networkProfile": {
+                  "networkInterfaces": [
+                    {
+                      "id": "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-external-nic', variables('fortigateName')))]",
+                      "properties": {
+                        "primary": true
+                      }
+                    },
+                    {
+                      "id": "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-internal-nic', variables('fortigateName')))]",
+                      "properties": {
+                        "primary": false
+                      }
+                    }
+                  ]
+                },
+                "diagnosticsProfile": {
+                  "bootDiagnostics": {
+                    "enabled": true
+                  }
+                }
+              },
+              "tags": {
+                "Environment": "Lab",
+                "Owner": "Xelatech",
+                "Service": "TenantB VPN endpoint"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-external-nic', variables('fortigateName')))]",
+                "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-internal-nic', variables('fortigateName')))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "tenantBFortigatePublicIp": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', 'TenantB-FortiGate-PIP'), '2024-05-01').ipAddress]"
+            },
+            "tenantBAddressPrefixes": {
+              "type": "array",
+              "value": [
+                "[parameters('tenantBAddressSpace')]"
+              ]
+            },
+            "fortigateInternalPrivateIp": {
+              "type": "string",
+              "value": "[variables('fortigateInternalPrivateIp')]"
+            },
+            "mcapsAddressPrefixes": {
+              "type": "array",
+              "value": "[parameters('mcapsAddressPrefixes')]"
+            },
+            "fortigateResourceId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.Compute/virtualMachines', variables('fortigateName'))]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('resourceGroupName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "tenantBFortigatePublicIp": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'tenantb-resources'), '2025-04-01').outputs.tenantBFortigatePublicIp.value]"
+    },
+    "tenantBAddressPrefixes": {
+      "type": "array",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'tenantb-resources'), '2025-04-01').outputs.tenantBAddressPrefixes.value]"
+    },
+    "fortigateInternalPrivateIp": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'tenantb-resources'), '2025-04-01').outputs.fortigateInternalPrivateIp.value]"
+    },
+    "mcapsAddressPrefixes": {
+      "type": "array",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'tenantb-resources'), '2025-04-01').outputs.mcapsAddressPrefixes.value]"
+    },
+    "fortigateResourceId": {
+      "type": "string",
+      "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('resourceGroupName')), 'Microsoft.Resources/deployments', 'tenantb-resources'), '2025-04-01').outputs.fortigateResourceId.value]"
+    }
+  }
+}

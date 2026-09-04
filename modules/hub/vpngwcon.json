@@ -1,0 +1,150 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.46.1.21595",
+      "templateHash": "9146433299323448932"
+    }
+  },
+  "parameters": {
+    "vpnSharedKey": {
+      "type": "securestring"
+    },
+    "location": {
+      "type": "string"
+    },
+    "localgwId": {
+      "type": "string"
+    },
+    "vnpconnectionName": {
+      "type": "string"
+    },
+    "vpngwName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the existing VPN Gateway"
+      }
+    },
+    "enableBgp": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Connection options"
+      }
+    },
+    "dpdTimeoutSeconds": {
+      "type": "int",
+      "defaultValue": 45
+    },
+    "connectionProtocol": {
+      "type": "string",
+      "defaultValue": "IKEv2",
+      "allowedValues": [
+        "IKEv1",
+        "IKEv2"
+      ]
+    },
+    "useLocalAzureIpAddress": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "usePolicyBasedTrafficSelectors": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "connectionMode": {
+      "type": "string",
+      "defaultValue": "Default",
+      "allowedValues": [
+        "Default",
+        "InitiatorOnly",
+        "ResponderOnly"
+      ]
+    },
+    "ipsecPolicies": {
+      "type": "array",
+      "defaultValue": [
+        {
+          "saLifeTimeSeconds": 27000,
+          "saDataSizeKilobytes": 0,
+          "ipsecEncryption": "GCMAES256",
+          "ipsecIntegrity": "GCMAES256",
+          "ikeEncryption": "AES256",
+          "ikeIntegrity": "SHA256",
+          "dhGroup": "DHGroup14",
+          "pfsGroup": "None"
+        }
+      ],
+      "metadata": {
+        "description": "Custom IPsec/IKE policies; set to [] to use Azure defaults"
+      }
+    },
+    "logAnalyticsWorkspaceId": {
+      "type": "string",
+      "metadata": {
+        "description": "The Log Analytics Workspace Resource ID"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/connections",
+      "apiVersion": "2024-07-01",
+      "name": "[parameters('vnpconnectionName')]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "SecurityControl": "Ignore",
+        "CostControl": "Ignore"
+      },
+      "properties": {
+        "virtualNetworkGateway1": {
+          "id": "[resourceId('Microsoft.Network/virtualNetworkGateways', parameters('vpngwName'))]",
+          "properties": {}
+        },
+        "localNetworkGateway2": {
+          "id": "[parameters('localgwId')]",
+          "properties": {}
+        },
+        "connectionType": "IPsec",
+        "sharedKey": "[parameters('vpnSharedKey')]",
+        "connectionProtocol": "[parameters('connectionProtocol')]",
+        "routingWeight": 0,
+        "enableBgp": "[parameters('enableBgp')]",
+        "useLocalAzureIpAddress": "[parameters('useLocalAzureIpAddress')]",
+        "usePolicyBasedTrafficSelectors": "[parameters('usePolicyBasedTrafficSelectors')]",
+        "ipsecPolicies": "[parameters('ipsecPolicies')]",
+        "trafficSelectorPolicies": [],
+        "tunnelProperties": [],
+        "expressRouteGatewayBypass": false,
+        "enablePrivateLinkFastPath": false,
+        "dpdTimeoutSeconds": "[parameters('dpdTimeoutSeconds')]",
+        "connectionMode": "[parameters('connectionMode')]",
+        "gatewayCustomBgpIpAddresses": []
+      }
+    },
+    {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[resourceId('Microsoft.Network/connections', parameters('vnpconnectionName'))]",
+      "name": "diag-vpnConnection",
+      "properties": {
+        "workspaceId": "[parameters('logAnalyticsWorkspaceId')]",
+        "metrics": [
+          {
+            "category": "AllMetrics",
+            "enabled": true,
+            "retentionPolicy": {
+              "enabled": false,
+              "days": 0
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/connections', parameters('vnpconnectionName'))]"
+      ]
+    }
+  ]
+}

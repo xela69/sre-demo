@@ -31,7 +31,7 @@ az role assignment list --assignee-object-id "$USER_ID" --include-inherited --al
 # MCAPS Subscriptions
 hubSubId="ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9"
 appsSubId="42021d44-97d2-47a1-8245-a77149dda4c3"
-dataSubId="8de6c6e8-53af-4ded-a480-fd20c6093e78"
+tenantBSubId="ed70102f-f789-4d4e-ac00-074283844a0c"
 
 # generate a random password
 accessKey=$(python ./scripts/pwdgen.py); echo $accessKey > ./docs/pwd.txt
@@ -51,12 +51,12 @@ az account set --subscription $hubSubId
 az deployment sub create --subscription $hubSubId -l westus2 --template-file ./main/hub/hubmain.bicep --parameters natPublicIP=$(curl -4 -s ifconfig.me) accessKey=$(cat ./docs/pwd.txt) sshPublicKey="$(cat ~/.ssh/id_ed25519.pub)" 
 --what-if
 
-# data-spoke — only labPassword required
-echo $dataSubId
-az account set --subscription $dataSubId
-az account show --query "{Name:name, ID:id}" -o table
-
-az deployment sub create --subscription $dataSubId -l westus3 --template-file ./main/data-spoke/datamain.bicep --parameters labPassword='demo!pass123' --what-if
+# TenantB and MCAPS compile, ARM validation, and what-if. Secrets are environment-only.
+export FORTIGATE_ADMIN_PASSWORD='<set-securely>'
+export VPN_SHARED_KEY='<set-securely>'
+export MCAPS_ACCESS_KEY='<set-securely>'
+export TENANTB_FORTIGATE_PUBLIC_IP='<deployed-tenantb-static-public-ip>'
+./scripts/validate-dual-tenant.sh
 
 # 1. Deploy Apps-spoke — only accessKey required
 echo $appsSubId
@@ -66,13 +66,7 @@ az account show --query "{Name:name, ID:id}" -o table
 az deployment sub create --subscription $appsSubId -l centralus --template-file ./main/apps-spoke/appsmain.bicep --parameters accessKey=$(cat ./docs/pwd.txt) natPublicIP=$(curl -4 -s ifconfig.me) sshPublicKey="$(cat ~/.ssh/id_ed25519.pub)" --what-if
 
 # check data and schema on AppsSQLVM
-# ── Post-deploy: enable VPN GW + flip spoke peerings to useRemoteGateways=true ──
-# Run AFTER hub is redeployed with deployVpnGw=true
-# --skip-hub   → skip hub redeploy, only patch peerings (hub GW already exists)
-# --dry-run    → preview without making changes
-./scripts/azcli/enable_vpngw_peering.sh
-./scripts/azcli/enable_vpngw_peering.sh --skip-hub
-./scripts/azcli/enable_vpngw_peering.sh --dry-run
+# TenantB is connected by IPsec and must never be added to MCAPS VNet peerings.
 
 # ── Post-deploy: seed LabAppDB on AppsSQLVM (run after apps-spoke deploy) ──
 ./scripts/azcli/seed-sqlvm.sh             # full seed (idempotent)
