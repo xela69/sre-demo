@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "8686560285378315431"
+      "templateHash": "11123220183333828451"
     }
   },
   "parameters": {
@@ -75,11 +75,18 @@
         "description": "Low-cost FortiGate VM size with two supported network interfaces."
       }
     },
+    "fortigateImageSku": {
+      "type": "string",
+      "defaultValue": "fortinet_fg-vm",
+      "metadata": {
+        "description": "FortiGate Marketplace plan/SKU. BYOL is compatible with the TenantB Visual Studio subscription."
+      }
+    },
     "fortigateImageVersion": {
       "type": "string",
-      "defaultValue": "7.4.11",
+      "defaultValue": "7.4.9",
       "metadata": {
-        "description": "Pinned FortiGate PAYG image version validated in westus2."
+        "description": "Pinned FortiGate image version validated in westus2 for the selected SKU."
       }
     }
   },
@@ -131,6 +138,9 @@
           "fortigateVmSize": {
             "value": "[parameters('fortigateVmSize')]"
           },
+          "fortigateImageSku": {
+            "value": "[parameters('fortigateImageSku')]"
+          },
           "fortigateImageVersion": {
             "value": "[parameters('fortigateImageVersion')]"
           }
@@ -142,7 +152,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.46.1.21595",
-              "templateHash": "17317466706082010821"
+              "templateHash": "4191403255186420381"
             }
           },
           "parameters": {
@@ -205,11 +215,18 @@
                 "description": "Low-cost FortiGate VM size with two supported network interfaces."
               }
             },
+            "fortigateImageSku": {
+              "type": "string",
+              "defaultValue": "fortinet_fg-vm",
+              "metadata": {
+                "description": "FortiGate Marketplace plan/SKU. BYOL (fortinet_fg-vm) avoids PAYG billing restrictions on Visual Studio subscriptions."
+              }
+            },
             "fortigateImageVersion": {
               "type": "string",
-              "defaultValue": "7.4.11",
+              "defaultValue": "7.4.9",
               "metadata": {
-                "description": "Pinned FortiGate PAYG image version validated in westus2."
+                "description": "Pinned FortiGate image version validated in westus2 for the selected SKU."
               }
             }
           },
@@ -223,7 +240,7 @@
             "fortigateName": "tenantb-fortigate",
             "imagePublisher": "fortinet",
             "imageOffer": "fortinet_fortigate-vm_v5",
-            "imageSku": "fortinet_fg-vm_payg_2023"
+            "imageSku": "[parameters('fortigateImageSku')]"
           },
           "resources": [
             {

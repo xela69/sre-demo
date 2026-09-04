@@ -59,6 +59,7 @@ export VPN_SHARED_KEY="$(cat ./docs/vpn-psk.txt)"
 export MCAPS_ACCESS_KEY="$(cat ./docs/pwd.txt)"
 # Optional until TenantB is deployed; omit to use the MCAPS documentation-only preview peer.
 # export TENANTB_FORTIGATE_PUBLIC_IP='<deployed-tenantb-static-public-ip>'
+#Validate the dual-tenant design and configuration (MCAPS + TenantB) before deploying TenantB.
 ./scripts/validate-dual-tenant.sh
 
 # 1. Deploy Apps-spoke — only accessKey required

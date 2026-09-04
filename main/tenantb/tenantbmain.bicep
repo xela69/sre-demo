@@ -32,8 +32,11 @@ param adminPassword string
 @description('Low-cost FortiGate VM size with two supported network interfaces.')
 param fortigateVmSize string = 'Standard_D2s_v5'
 
-@description('Pinned FortiGate PAYG image version validated in westus2.')
-param fortigateImageVersion string = '7.4.11'
+@description('FortiGate Marketplace plan/SKU. BYOL is compatible with the TenantB Visual Studio subscription.')
+param fortigateImageSku string = 'fortinet_fg-vm'
+
+@description('Pinned FortiGate image version validated in westus2 for the selected SKU.')
+param fortigateImageVersion string = '7.4.9'
 
 resource networkResourceGroup 'Microsoft.Resources/resourceGroups@2024-11-01' = {
   name: resourceGroupName
@@ -58,6 +61,7 @@ module tenantBResources './tenantb-resources.bicep' = {
     adminUsername: adminUsername
     adminPassword: adminPassword
     fortigateVmSize: fortigateVmSize
+    fortigateImageSku: fortigateImageSku
     fortigateImageVersion: fortigateImageVersion
   }
 }

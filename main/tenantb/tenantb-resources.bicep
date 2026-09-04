@@ -29,8 +29,11 @@ param adminPassword string
 @description('Low-cost FortiGate VM size with two supported network interfaces.')
 param fortigateVmSize string = 'Standard_D2s_v5'
 
-@description('Pinned FortiGate PAYG image version validated in westus2.')
-param fortigateImageVersion string = '7.4.11'
+@description('FortiGate Marketplace plan/SKU. BYOL (fortinet_fg-vm) avoids PAYG billing restrictions on Visual Studio subscriptions.')
+param fortigateImageSku string = 'fortinet_fg-vm'
+
+@description('Pinned FortiGate image version validated in westus2 for the selected SKU.')
+param fortigateImageVersion string = '7.4.9'
 
 var externalSubnetPrefix = '10.61.0.0/27'
 var internalSubnetPrefix = '10.61.0.32/27'
@@ -41,7 +44,7 @@ var fortigateInternalPrivateIp = '10.61.0.36'
 var fortigateName = 'tenantb-fortigate'
 var imagePublisher = 'fortinet'
 var imageOffer = 'fortinet_fortigate-vm_v5'
-var imageSku = 'fortinet_fg-vm_payg_2023'
+var imageSku = fortigateImageSku
 
 resource externalNsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   name: 'TenantB-FortiGate-External-NSG'
