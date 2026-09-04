@@ -29,8 +29,8 @@ param adminUsername string = 'fortiadmin'
 @description('FortiGate administrator password. Supply securely at validation or deployment time.')
 param adminPassword string
 
-@description('Low-cost FortiGate VM size with two supported network interfaces.')
-param fortigateVmSize string = 'Standard_D2s_v5'
+@description('Low-cost FortiGate VM size with two supported network interfaces. DSv4 has quota in westus2; DSv5 does not.')
+param fortigateVmSize string = 'Standard_D2s_v4'
 
 @description('FortiGate licensing model. PAYG bundles the license into hourly billing (requires a supported payment instrument); BYOL requires a Fortinet license file.')
 @allowed([

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "15423870696128723768"
+      "templateHash": "17933696685228794065"
     }
   },
   "parameters": {
@@ -70,9 +70,9 @@
     },
     "fortigateVmSize": {
       "type": "string",
-      "defaultValue": "Standard_D2s_v5",
+      "defaultValue": "Standard_D2s_v4",
       "metadata": {
-        "description": "Low-cost FortiGate VM size with two supported network interfaces."
+        "description": "Low-cost FortiGate VM size with two supported network interfaces. DSv4 has quota in westus2; DSv5 does not."
       }
     },
     "licenseModel": {
@@ -156,7 +156,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.46.1.21595",
-              "templateHash": "8720191247069170285"
+              "templateHash": "306931086912375036"
             }
           },
           "parameters": {
@@ -214,9 +214,9 @@
             },
             "fortigateVmSize": {
               "type": "string",
-              "defaultValue": "Standard_D2s_v5",
+              "defaultValue": "Standard_D2s_v4",
               "metadata": {
-                "description": "Low-cost FortiGate VM size with two supported network interfaces."
+                "description": "Low-cost FortiGate VM size with two supported network interfaces. DSv4 has quota in westus2; DSv5 does not."
               }
             },
             "licenseModel": {
