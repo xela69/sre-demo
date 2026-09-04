@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "18390284937466141598"
+      "templateHash": "15423870696128723768"
     }
   },
   "parameters": {
@@ -75,25 +75,22 @@
         "description": "Low-cost FortiGate VM size with two supported network interfaces."
       }
     },
-    "fortigateImageSku": {
+    "licenseModel": {
       "type": "string",
-      "defaultValue": "fortinet_fg-vm",
+      "defaultValue": "PAYG",
+      "allowedValues": [
+        "PAYG",
+        "BYOL"
+      ],
       "metadata": {
-        "description": "FortiGate Marketplace plan/SKU. BYOL is compatible with the TenantB Visual Studio subscription."
-      }
-    },
-    "fortigateImageVersion": {
-      "type": "string",
-      "defaultValue": "7.4.9",
-      "metadata": {
-        "description": "Pinned FortiGate image version validated in westus2 for the selected SKU."
+        "description": "FortiGate licensing model. PAYG bundles the license into hourly billing (requires a supported payment instrument); BYOL requires a Fortinet license file."
       }
     },
     "fortigateLicenseContent": {
       "type": "securestring",
       "defaultValue": "",
       "metadata": {
-        "description": "FortiGate BYOL license (.lic) content. Leave empty for validation; supply the free-trial or paid license at deployment to activate the appliance."
+        "description": "FortiGate BYOL license (.lic) content. Ignored for PAYG. Leave empty for validation; supply the free-trial or paid license at deployment to activate the appliance."
       }
     }
   },
@@ -145,11 +142,8 @@
           "fortigateVmSize": {
             "value": "[parameters('fortigateVmSize')]"
           },
-          "fortigateImageSku": {
-            "value": "[parameters('fortigateImageSku')]"
-          },
-          "fortigateImageVersion": {
-            "value": "[parameters('fortigateImageVersion')]"
+          "licenseModel": {
+            "value": "[parameters('licenseModel')]"
           },
           "fortigateLicenseContent": {
             "value": "[parameters('fortigateLicenseContent')]"
@@ -162,7 +156,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.46.1.21595",
-              "templateHash": "1709652628314018206"
+              "templateHash": "8720191247069170285"
             }
           },
           "parameters": {
@@ -225,25 +219,50 @@
                 "description": "Low-cost FortiGate VM size with two supported network interfaces."
               }
             },
-            "fortigateImageSku": {
+            "licenseModel": {
+              "type": "string",
+              "defaultValue": "PAYG",
+              "allowedValues": [
+                "PAYG",
+                "BYOL"
+              ],
+              "metadata": {
+                "description": "FortiGate licensing model. PAYG bundles the license into hourly billing (requires a supported payment instrument); BYOL requires a Fortinet license file."
+              }
+            },
+            "fortigatePaygSku": {
+              "type": "string",
+              "defaultValue": "fortinet_fg-vm_payg_2023",
+              "metadata": {
+                "description": "FortiGate PAYG Marketplace SKU."
+              }
+            },
+            "fortigateByolSku": {
               "type": "string",
               "defaultValue": "fortinet_fg-vm",
               "metadata": {
-                "description": "FortiGate Marketplace plan/SKU. BYOL (fortinet_fg-vm) avoids PAYG billing restrictions on Visual Studio subscriptions."
+                "description": "FortiGate BYOL Marketplace SKU."
               }
             },
-            "fortigateImageVersion": {
+            "fortigatePaygVersion": {
+              "type": "string",
+              "defaultValue": "7.4.11",
+              "metadata": {
+                "description": "Pinned FortiGate PAYG image version validated in westus2."
+              }
+            },
+            "fortigateByolVersion": {
               "type": "string",
               "defaultValue": "7.4.9",
               "metadata": {
-                "description": "Pinned FortiGate image version validated in westus2 for the selected SKU."
+                "description": "Pinned FortiGate BYOL image version validated in westus2."
               }
             },
             "fortigateLicenseContent": {
               "type": "securestring",
               "defaultValue": "",
               "metadata": {
-                "description": "FortiGate BYOL license (.lic) content. Leave empty for validation; supply the free-trial or paid license at deployment to activate the appliance."
+                "description": "FortiGate BYOL license (.lic) content. Ignored for PAYG. Leave empty for validation; supply the free-trial or paid license at deployment to activate the appliance."
               }
             }
           },
@@ -257,7 +276,9 @@
             "fortigateName": "tenantb-fortigate",
             "imagePublisher": "fortinet",
             "imageOffer": "fortinet_fortigate-vm_v5",
-            "imageSku": "[parameters('fortigateImageSku')]"
+            "isPayg": "[equals(parameters('licenseModel'), 'PAYG')]",
+            "imageSku": "[if(variables('isPayg'), parameters('fortigatePaygSku'), parameters('fortigateByolSku'))]",
+            "imageVersion": "[if(variables('isPayg'), parameters('fortigatePaygVersion'), parameters('fortigateByolVersion'))]"
           },
           "resources": [
             {
@@ -464,7 +485,7 @@
                     "publisher": "[variables('imagePublisher')]",
                     "offer": "[variables('imageOffer')]",
                     "sku": "[variables('imageSku')]",
-                    "version": "[parameters('fortigateImageVersion')]"
+                    "version": "[variables('imageVersion')]"
                   },
                   "osDisk": {
                     "createOption": "FromImage",
@@ -473,7 +494,7 @@
                     }
                   }
                 },
-                "osProfile": "[union(createObject('computerName', variables('fortigateName'), 'adminUsername', parameters('adminUsername'), 'adminPassword', parameters('adminPassword'), 'linuxConfiguration', createObject('disablePasswordAuthentication', false())), if(empty(parameters('fortigateLicenseContent')), createObject(), createObject('customData', base64(parameters('fortigateLicenseContent')))))]",
+                "osProfile": "[union(createObject('computerName', variables('fortigateName'), 'adminUsername', parameters('adminUsername'), 'adminPassword', parameters('adminPassword'), 'linuxConfiguration', createObject('disablePasswordAuthentication', false())), if(or(empty(parameters('fortigateLicenseContent')), variables('isPayg')), createObject(), createObject('customData', base64(parameters('fortigateLicenseContent')))))]",
                 "networkProfile": {
                   "networkInterfaces": [
                     {

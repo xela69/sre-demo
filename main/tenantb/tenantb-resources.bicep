@@ -29,14 +29,27 @@ param adminPassword string
 @description('Low-cost FortiGate VM size with two supported network interfaces.')
 param fortigateVmSize string = 'Standard_D2s_v5'
 
-@description('FortiGate Marketplace plan/SKU. BYOL (fortinet_fg-vm) avoids PAYG billing restrictions on Visual Studio subscriptions.')
-param fortigateImageSku string = 'fortinet_fg-vm'
+@description('FortiGate licensing model. PAYG bundles the license into hourly billing (requires a supported payment instrument); BYOL requires a Fortinet license file.')
+@allowed([
+  'PAYG'
+  'BYOL'
+])
+param licenseModel string = 'PAYG'
 
-@description('Pinned FortiGate image version validated in westus2 for the selected SKU.')
-param fortigateImageVersion string = '7.4.9'
+@description('FortiGate PAYG Marketplace SKU.')
+param fortigatePaygSku string = 'fortinet_fg-vm_payg_2023'
+
+@description('FortiGate BYOL Marketplace SKU.')
+param fortigateByolSku string = 'fortinet_fg-vm'
+
+@description('Pinned FortiGate PAYG image version validated in westus2.')
+param fortigatePaygVersion string = '7.4.11'
+
+@description('Pinned FortiGate BYOL image version validated in westus2.')
+param fortigateByolVersion string = '7.4.9'
 
 @secure()
-@description('FortiGate BYOL license (.lic) content. Leave empty for validation; supply the free-trial or paid license at deployment to activate the appliance.')
+@description('FortiGate BYOL license (.lic) content. Ignored for PAYG. Leave empty for validation; supply the free-trial or paid license at deployment to activate the appliance.')
 param fortigateLicenseContent string = ''
 
 var externalSubnetPrefix = '10.61.0.0/27'
@@ -48,7 +61,9 @@ var fortigateInternalPrivateIp = '10.61.0.36'
 var fortigateName = 'tenantb-fortigate'
 var imagePublisher = 'fortinet'
 var imageOffer = 'fortinet_fortigate-vm_v5'
-var imageSku = fortigateImageSku
+var isPayg = licenseModel == 'PAYG'
+var imageSku = isPayg ? fortigatePaygSku : fortigateByolSku
+var imageVersion = isPayg ? fortigatePaygVersion : fortigateByolVersion
 
 resource externalNsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   name: 'TenantB-FortiGate-External-NSG'
@@ -278,7 +293,7 @@ resource fortigateVm 'Microsoft.Compute/virtualMachines@2024-11-01' = {
         publisher: imagePublisher
         offer: imageOffer
         sku: imageSku
-        version: fortigateImageVersion
+        version: imageVersion
       }
       osDisk: {
         createOption: 'FromImage'
@@ -296,7 +311,7 @@ resource fortigateVm 'Microsoft.Compute/virtualMachines@2024-11-01' = {
           disablePasswordAuthentication: false
         }
       },
-      empty(fortigateLicenseContent)
+      empty(fortigateLicenseContent) || isPayg
         ? {}
         : {
             customData: base64(fortigateLicenseContent)
