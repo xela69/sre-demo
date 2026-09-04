@@ -10,6 +10,10 @@ az account show --query "{ID:id, Name:name}" -o table
 az account clear
 # List management groups
 az account management-group list --output table
+# login to the Xelatech tenant ID
+TENANTB_TENANT="6aa484b3-3f8f-4112-812e-161516a37550"; echo $TENANTB_TENANT
+
+az login --tenant $TENANTB_TENANT
 
 UPN="arnoldp@xelatech.net"
 az role assignment list --assignee $UPN --all -o table

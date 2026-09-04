@@ -9,13 +9,32 @@ SRE-Demo is an Azure hub-spoke landing zone and operations demo. It builds a con
 
 The repo is demo-first today, with a path toward production-grade IaC posture through AVM adoption, CAF alignment, and security/governance hardening.
 
+### Azure Contexts
+
+The demo uses two Azure tenant contexts:
+
+| Context | Purpose | Subscription |
+| --- | --- | --- |
+| MCAPS tenant | Landing-zone hub, apps target, shared services, migration control plane, and destination | Hub `ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9`, Apps `42021d44-97d2-47a1-8245-a77149dda4c3` |
+| TenantB (`xelatech.net`) | Independent source estate behind a FortiGate NVA | Visual Studio subscription `ed70102f-f789-4d4e-ac00-074283844a0c` |
+
+Treat TenantB as the source estate and MCAPS as the migration target. Always verify the active tenant and subscription before running commands:
+
+```bash
+az login --tenant xelatech.net
+az account set --subscription ed70102f-f789-4d4e-ac00-074283844a0c
+az account show --query '{tenantId:tenantId, subscriptionId:id, name:name, user:user.name}' -o table
+```
+
+Deploy TenantB from `main/tenantb/tenantbmain.bicep` in a dedicated TenantB login. Deploy MCAPS separately and pass only the TenantB FortiGate public IP and CIDRs into the MCAPS VPN configuration. No cross-tenant Azure resource IDs are used.
+
 ## What It Deploys
 
 Primary deployment entry points:
 
 - `main/hub/hubmain.bicep` - hub subscription and shared platform services
 - `main/apps-spoke/appsmain.bicep` - apps spoke workloads and app platform resources
-- `main/data-spoke/datamain.bicep` - data/on-prem simulation workloads
+- `main/tenantb/tenantbmain.bicep` - TenantB VNet, FortiGate NVA, and source network
 - `main/dc-spoke/dcmain.bicep` - DC/on-prem spoke pattern
 - `platform/` - identity, management group, subscription, and policy scaffolding
 
@@ -24,7 +43,8 @@ Core components:
 | Area | Components | Purpose |
 |---|---|---|
 | Hub network | Hub VNet, Azure Firewall, route tables, VPN Gateway, DNS Resolver | Central transit, inspection, hybrid routing, DNS forwarding |
-| Spokes | Apps, data, and DC/on-prem-style VNets | Isolated workload zones connected through hub controls |
+| MCAPS spokes | Apps and optional DC VNets | Isolated workload zones connected through hub controls |
+| TenantB source | FortiGate NVA, source VNet, and workload subnet | Independent remote site connected by IPsec |
 | Compute | Windows VMs, Linux VMs, SQL VMs | Demo workloads, migration sources, troubleshooting targets |
 | App platform | Container Apps, ACR, storage | Application hosting and image/artifact platform |
 | Security | Key Vault, managed identities, RBAC assignments | Secrets, identity-based access, platform permissions |
@@ -38,14 +58,17 @@ CIDR layout:
 | Zone | Address Space | Notes |
 |---|---|---|
 | Hub | `10.50.0.0/20` | Firewall, VPN Gateway, DNS, Bastion, shared services |
-| Data spoke | `10.51.0.0/20` | Data and migration-source style VMs |
 | Apps spoke | `10.52.0.0/20` | App VM, SQL VM, storage, container apps |
-| On-prem/DC spoke | `10.53.0.0/20` | Future/on-prem simulation pattern |
-| Real on-prem routes | `10.2.1.0/24`, `10.6.1.0/24`, `172.16.110.0/24`, `172.17.111.0/24` | Advertised/handled through FortiGate/VPN path |
+| DC spoke | `10.53.0.0/20` | Optional MCAPS infrastructure pattern |
+| TenantB | `10.61.0.0/20` | FortiGate and migration-source network |
 
 ```mermaid
 flowchart TB
-  OnPrem[On-prem / FortiGate Networks\n10.2.1.0/24, 10.6.1.0/24\n172.16.110.0/24, 172.17.111.0/24]
+  subgraph TenantB[TenantB - Xelatech]
+    FortiGate[FortiGate NVA\nstatic public IP]
+    Source[Source workloads\n10.61.2.0/23]
+    Source --> FortiGate
+  end
 
   subgraph HubSub[Hub Subscription]
     HubVNet[Hub VNet\n10.50.0.0/20]
@@ -66,46 +89,35 @@ flowchart TB
     AppsStorage[Apps Storage]
   end
 
-  subgraph DataSub[Data Subscription]
-    DataVNet[Data Spoke VNet\n10.51.0.0/20]
-    DataWin[On-prem-like Windows VM]
-    DataSQL[On-prem-like SQL VM]
-  end
-
-  subgraph DCSub[DC / On-prem Simulation]
+  subgraph DCSub[MCAPS DC Spoke]
     DCVNet[DC Spoke VNet\n10.53.0.0/20]
     DCVM[DC VM Pattern]
   end
 
-  OnPrem <--> VPN
+  FortiGate <-->|Route-based IPsec| VPN
   VPN <--> FW
   FW <--> HubVNet
   HubVNet <--> AppsVNet
-  HubVNet <--> DataVNet
   HubVNet <--> DCVNet
 
   AppsVNet --> AppsVM
   AppsVNet --> AppsSQL
   AppsVNet --> ACA
   AppsVNet --> AppsStorage
-  DataVNet --> DataWin
-  DataVNet --> DataSQL
   DCVNet --> DCVM
 
   ACA --> ACR
   AppsVM --> MON
   AppsSQL --> MON
-  DataWin --> MON
-  DataSQL --> MON
   FW --> MON
   KV --> MON
 ```
 
 ## Routing Intent
 
-- Spokes send default and on-prem-bound traffic to Azure Firewall at `10.50.4.4`.
+- MCAPS spokes send default and TenantB-bound traffic to Azure Firewall at `10.50.4.4`.
 - Firewall is the inspection point for east-west, egress, and hybrid paths.
-- Firewall subnet keeps BGP enabled so it can learn on-prem routes through the VPN path.
+- Firewall subnet permits gateway route propagation so it learns static TenantB LNG prefixes even though VPN BGP is disabled.
 - Gateway subnet has routes to send traffic back through the firewall where required.
 - Bastion provides admin access without direct public VM exposure.
 
@@ -148,28 +160,36 @@ Lab intent:
 - Demonstrate firewall-controlled egress and hub-routed east-west/hybrid traffic.
 - Provide app and SQL resources that can participate in migration and modernization demos.
 
-### Data Spoke
+### TenantB Source Environment
 
-The data spoke is the legacy/on-prem-style source environment for migration labs. It simulates older Windows and SQL workloads that need Arc onboarding, assessment, migration, or modernization.
+TenantB is the logical legacy source environment for migration labs. It is independently deployed in the Xelatech Visual Studio subscription (`ed70102f-f789-4d4e-ac00-074283844a0c`), separate from the MCAPS migration target.
 
 Network:
 
-- VNet: `10.51.0.0/20`
-- VM subnet: `10.51.0.0/24`
-- Apps subnet: `10.51.1.0/24`
-- Private endpoint subnet: `10.51.10.0/24`
+- VNet: `10.61.0.0/20`
+- FortiGate external subnet: `10.61.0.0/27`
+- FortiGate internal subnet: `10.61.0.32/27`
+- Management subnet: `10.61.1.0/24`
+- Source workload subnet: `10.61.2.0/23`
 
-Workloads:
+Planned source workloads:
 
-- `onprem-win-vm`: Windows Server 2012 R2 + SQL 2014 community gallery image; DSC runs `ArcConnect`.
-- `onprem-sql-vm`: Windows Server 2022 + SQL Server 2019 Standard; DSC restores `database.bak` from the Tailspin lab assets.
-- Data storage account with `inputs`, `outputs`, and `errors` blob containers plus `notesdoc` file share.
+- Arc server: a supported Windows Server VM used to demonstrate Connected Machine onboarding and hybrid governance.
+- Legacy SQL source: an x64 Windows Server 2019 VM with SQL Server 2016 SP3 Developer for Azure Migrate discovery, Arc-enabled SQL inventory, assessment, and migration.
+- Low-cost FortiGate PAYG NVA providing the route-based VPN endpoint and TenantB policy boundary.
+
+Important boundaries:
+
+- The retired Tahubu Windows Server 2012 R2/SQL Server 2014 community image is no longer a deployable source.
+- A direct Azure VM can simulate an Arc-enabled server for evaluation only after following Microsoft's Azure VM evaluation procedure.
+- Arc-enabled SQL Server does not support SQL Server installed directly on an Azure VM. For the combined Arc SQL demo, run the x64 SQL source as a nested guest or on another external x64 host; use the Xelatech subscription only to host the lab boundary.
+- Host the source compute in TenantB, but register the nested/external guest's Arc resource and create the Azure Migrate project in MCAPS so discovery, assessment, and migration are demonstrated from the target control plane. Grant only the required onboarding and migration roles.
 
 Lab intent:
 
 - Represent the source side of a migration story.
-- Demonstrate Azure Arc onboarding for a legacy Windows workload.
-- Demonstrate SQL source setup for Azure Migrate/DMS style flows.
+- Demonstrate cross-tenant Azure Arc onboarding for a legacy-style Windows workload.
+- Demonstrate SQL discovery, assessment, and migration from Xelatech into MCAPS targets.
 - Keep legacy/data workloads separate from the apps modernization target area.
 
 ### DC / On-Prem Simulation Spoke
@@ -208,10 +228,11 @@ This environment can support several demos:
 
 1. Platform/management scaffolding as needed.
 2. Hub deployment.
-3. VPN and peering updates when hybrid path is required.
-4. Data spoke deployment.
-5. Apps spoke deployment.
-6. Validation scripts for VM Insights and firewall/DNS path.
+3. TenantB deployment from a separate TenantB login.
+4. Exchange VPN endpoint metadata and inject the PSK out of band.
+5. Validate the route-based IPsec tunnel and symmetric firewall path.
+6. Apps spoke deployment.
+7. Validation scripts for VM Insights and firewall/DNS path.
 
 ## AVM Posture
 

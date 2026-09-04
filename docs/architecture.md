@@ -1,33 +1,73 @@
-# SRE-Demo — SRE Demo Deployment Plan 
+# SRE-Demo - SRE Demo Deployment Plan
 
-## Architecture: 
-Hub and spokes
+## Architecture
+
+Two independently deployed Azure tenants connected by a route-based site-to-site IPsec VPN:
+
+- **TenantB (`xelatech.net`)** hosts the simulated source estate behind a low-cost FortiGate NVA.
+- **MCAPS** hosts the landing-zone hub, Azure Firewall, VPN Gateway, Arc/Azure Migrate control plane, and migration targets.
+- The tenants exchange only VPN endpoint metadata, address prefixes, and an out-of-band pre-shared key. They do not use cross-tenant VNet peering or cross-tenant resource IDs.
 
 ### Subscription Layout
 
 ```bash
+# MCAPS landing-zone and migration-target subscriptions
 hubSubId="ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9"   # hub subscription
 appsSubId="42021d44-97d2-47a1-8245-a77149dda4c3"  # apps-spoke subscription
-dataSubId="8de6c6e8-53af-4ded-a480-fd20c6093e78"  # data-spoke subscription
+
+# TenantB source simulation
+tenantBSubId="ed70102f-f789-4d4e-ac00-074283844a0c" # Xelatech Visual Studio subscription
 ```
 
-## CIDR Scheme HUB/SPOKES
+MCAPS is the landing-zone, migration-control-plane, and migration-target context. TenantB is deliberately outside MCAPS so Arc onboarding and Azure Migrate discovery resemble a separate source estate.
 
-| Spoke | Address Space | vmSubnet | fwPrivateIP | Status |
-|-------|--------------|----------|-------------|--------|
-|Hub | `10.50.0.0/20` | `10.50.0.0/24` | `10.50.4.4` | done |
-| data-spoke | `10.51.0.0/20` | `10.51.0.0/24` | `10.50.4.4` | done |
-| Apps-spoke | `10.52.0.0/20` | `10.52.0.0/24` | `10.50.4.4` | done |
-| onprem-spoke | `10.53.0.0/20` | `10.53.0.0/24` | `10.50.4.4` | future |
+Before operating on the source environment, establish and verify its context explicitly:
 
-**On-Prem Networks** (BGP-advertised via FortiGate):
+```bash
+az login --tenant xelatech.net
+az account set --subscription "$tenantBSubId"
+az account show --query '{tenantId:tenantId, subscriptionId:id, name:name, user:user.name}' -o table
+```
 
-| Network | Address Space | Function | Notes |
-|---------|---------------|----------|-------|
-| WiFi | `10.2.1.0/24` | — | User SSID |
-| internal3 | `172.16.110.0/24` | — | On-prem data segment |
-| internal2 | `172.17.111.0/24` | — | On-prem internal segment |
-| internal1 | `10.6.1.0/24` | — | On-prem infrastructure |
+Do not assume that setting a subscription changes the signed-in tenant. Login to TenantB first, deploy `main/tenantb/tenantbmain.bicep`, record its outputs, and then establish a separate MCAPS login before validating or deploying the hub.
+
+## CIDR Scheme
+
+| Security zone | Address space | Purpose |
+| --- | --- | --- |
+| MCAPS hub | `10.50.0.0/20` | Azure Firewall, VPN Gateway, DNS, and shared services |
+| MCAPS apps spoke | `10.52.0.0/20` | Application and migration-target workloads |
+| MCAPS DC spoke | `10.53.0.0/20` | Optional MCAPS infrastructure spoke |
+| TenantB | `10.61.0.0/20` | Independently deployed source estate |
+| TenantB FortiGate external | `10.61.0.0/27` | Public-side FortiGate NIC |
+| TenantB FortiGate internal | `10.61.0.32/27` | Trusted-side FortiGate NIC |
+| TenantB management | `10.61.1.0/24` | Administrative systems |
+| TenantB source workloads | `10.61.2.0/23` | Arc, SQL, and migration source systems |
+
+`10.51.0.0/20` is retired from the active design. TenantB is a VPN-connected remote site, not an MCAPS spoke.
+
+```mermaid
+flowchart LR
+  subgraph TenantB["TenantB - Xelatech source"]
+    FgtPip[Static Standard public IP]
+    Fgt[FortiGate NVA\nroute-based IPsec]
+    TenantBWorkloads[Source workloads\n10.61.2.0/23]
+    TenantBWorkloads -->|MCAPS prefixes via UDR| Fgt
+    FgtPip --- Fgt
+  end
+
+  subgraph MCAPS["MCAPS tenant"]
+    Vpn[Azure VPN Gateway]
+    Firewall[Azure Firewall\n10.50.4.4]
+    Hub[Hub\n10.50.0.0/20]
+    Apps[Apps\n10.52.0.0/20]
+    Vpn --> Firewall
+    Firewall --> Hub
+    Firewall --> Apps
+  end
+
+  Fgt <-->|IKEv2 IPsec| Vpn
+```
 
 ---
 
@@ -62,15 +102,20 @@ Custom modules kept where AVM replacement adds no value (complex UDR/peering/fir
 
 --- 
 
-## VM Deployment (data-spoke)
+## TenantB Source Deployment
 
-Deployed via `main/data-spoke/opmain.bicep` using AVM `compute/virtual-machine:0.9.0`.
-Subscription: `$dataSubId`
+TenantB is deployed from `main/tenantb/tenantbmain.bicep` while authenticated to `xelatech.net`. It owns its VNet, FortiGate NVA, public IP, route tables, and source workload subnet. It does not reference the MCAPS subscription, VNet, firewall, identities, monitoring resources, or DNS zones.
 
-| VM | Image | DSC Script | Purpose |
-|----|-------|-----------|---------|
-| `onprem-win-vm` | Community gallery `WS2012R2_SQL2014_Base` (Tahubu) | `windows-vm-config.zip` -> ArcConnect | Azure Arc onboarding |
-| `onprem-sql-vm` | Marketplace `SQL2019-WS2022/Standard` | `sql-vm-config.zip` -> Main + DbRestore | SQL source for migration |
+The FortiGate uses two NICs with IP forwarding enabled. The workload route table sends only declared MCAPS prefixes to the FortiGate internal private IP. Static routing and BGP disabled are the defaults for this demo.
+
+| Source role | Recommended platform | Purpose |
+| --- | --- | --- |
+| Arc server | Supported Windows Server VM | Connected Machine onboarding, inventory, policy, monitoring, and update-management demo |
+| Legacy SQL source | Windows Server 2019 x64 + SQL Server 2016 SP3 Developer | Azure Migrate discovery, Arc-enabled SQL assessment, and migration into MCAPS |
+
+The previous Tahubu `WS2012R2_SQL2014_Base` community image has been withdrawn and cannot be used. A direct Azure VM may be Arc-enabled only as an evaluation simulation, and Arc-enabled SQL Server does not support SQL Server installed directly on an Azure VM. For a combined Arc SQL demonstration hosted from the Xelatech subscription, place the SQL workload in a nested x64 guest or use an external x64 virtualization host reachable by the migration tooling.
+
+The source compute belongs to TenantB. Register the nested/external guest as an Arc resource in MCAPS and place the Azure Migrate project in MCAPS, making MCAPS the assessment and migration control plane as well as the destination tenant.
 
 DSC scripts from `https://raw.githubusercontent.com/{repositoryOwner}/migrate-to-azure-landing-zone/{repositoryBranch}/...`
 Defaults: `repositoryOwner=microsoft`, `repositoryBranch=main`.
@@ -94,50 +139,34 @@ NSG removed. Azure Firewall (`10.50.4.4`) is the sole control plane via UDR `0.0
 | Rule Collection | Group Priority | Notes |
 |----------------|---------------|-------|
 | `AllowTrustedAzureTraffic` | 300 | East-west within Azure subnets. Ports incl. 1433, 5022, 11000-11999 |
-| `AllowAzureToOnPrem` | 300 | Azure -> onprem direction. Same port set |
-| `AllowOnPremToAzure` | 300 | Onprem -> Azure direction. Same port set |
+| `AllowAzureToTenantB` | 300 | MCAPS to TenantB direction. Same port set |
+| `AllowTenantBToAzure` | 300 | TenantB to MCAPS direction. Same port set |
 
-IP Group `trustedAzureSubnets`: `10.50.0.0/20` (hub), `10.51.0.0/20` (data), `10.52.0.0/20` (apps)
-IP Group `infraServerSubnets`: `10.50.0.0/24`, `10.51.0.0/24`, `10.52.0.0/24` (internet egress rules)
+IP Group `trustedAzureSubnets`: `10.50.0.0/20` (hub), `10.52.0.0/20` (apps), `10.53.0.0/20` (optional DC)
+IP Group `trustedTenantBSubnets`: `10.61.0.0/20`
+IP Group `infraServerSubnets`: `10.50.0.0/24`, `10.52.0.0/24`, `10.53.0.0/24` (internet egress rules)
 
 ---
-┌─────────────────────────────────────────────────────────────────┐
-│  AZURE HUB-SPOKE-ONPREM ROUTING MODEL                           │
-└─────────────────────────────────────────────────────────────────┘
+```text
+TENANTB WORKLOAD SUBNET (10.61.2.0/23)
+  MCAPS prefixes -> FortiGate internal IP 10.61.0.36
 
-SPOKE VMs (10.51.1.0, 10.52.0.0, etc.)
-  ├─ RouteTable: hubRouteTable (BGP disabled)
-  ├─ Routes:
-  │  ├─ 10.2.1.0/24 → Firewall 10.50.4.4 (inspection)
-  │  ├─ 10.6.1.0/24 → Firewall 10.50.4.4 (inspection)
-  │  ├─ 172.16.110.0/24 → Firewall 10.50.4.4 (inspection)
-  │  ├─ 172.17.111.0/24 → Firewall 10.50.4.4 (inspection)
-  │  └─ 0.0.0.0/0 → Firewall 10.50.4.4 (default)
+FORTIGATE NVA
+  Static FortiOS routes for 10.50.0.0/20, 10.52.0.0/20, and 10.53.0.0/20
+  Route-based IKEv2 IPsec tunnel -> MCAPS VPN Gateway public IP
 
-FIREWALL SUBNET (10.50.4.0/26)
-  ├─ RouteTable: firewallSubnetRouteTable (BGP ENABLED ✅)
-  ├─ Explicit routes:
-  │  ├─ 10.2.1.0/24 → VPN Gateway
-  │  ├─ 10.6.1.0/24 → VPN Gateway
-  │  ├─ 172.16.110.0/24 → VPN Gateway
-  │  └─ 172.17.111.0/24 → VPN Gateway
-  └─ Dynamic routes (learned via BGP):
-     ├─ 10.50.0.0/20 (Hub VNet, system route)
-     ├─ 10.51.0.0/20 (Spoke1, if peered)
-     ├─ 10.52.0.0/20 (Spoke2, if peered)
-     └─ 10.53.0.0/20 (Spoke3, if peered)
+MCAPS GATEWAY SUBNET
+  Specific MCAPS address spaces -> Azure Firewall 10.50.4.4
+  No 0.0.0.0/0 UDR
 
-GATEWAY SUBNET (10.50.2.0/26, contains VPN Gateway)
-  ├─ RouteTable: hubVpnGatewayTable (BGP disabled)
-  ├─ Routes:
-  │  └─ 0.0.0.0/0 → Firewall 10.50.4.4
-  └─ System routes (ALWAYS present, no table needed):
-     ├─ 10.50.0.0/20 (Hub VNet direct)
-     └─ 10.2.1.0/24, etc. (from on-prem via IPsec)
+MCAPS AZURE FIREWALL SUBNET
+  TenantB 10.61.0.0/20 learned through LNG gateway route propagation
+  0.0.0.0/0 -> Internet retained as required for Azure Firewall
 
-ONPREM
-  ├─ Sends to Azure via IPsec tunnel
-  └─ Receives via return route in VPN tunnel
+MCAPS WORKLOAD SUBNETS
+  0.0.0.0/0 -> Azure Firewall 10.50.4.4
+  Gateway route propagation disabled to prevent inspection bypass
+```
 
 ## Apps-Spoke VM Inventory (SQL VM)
 
@@ -188,11 +217,21 @@ Role assignments: `xelaStorage-Identity` (hub sub) → Storage Blob Data Contrib
 
 
 ```bash
-# Hub (Tenant)
-az deployment sub create --subscription $hubSubId -l westus2 --template-file ./main/hub/hubmain.bicep   --parameters natPublicIP=$(curl -4 -s ifconfig.me) accessKey=$(cat ./docs/pwd.txt) sshPublicKey="$(cat ~/.ssh/id_ed25519.pub)" --what-if
+# TenantB (run after az login --tenant xelatech.net)
+az deployment sub what-if --subscription "$tenantBSubId" -l westus2 \
+  --template-file ./main/tenantb/tenantbmain.bicep \
+  --parameters @./main/tenantb/tenantb.parameters.json \
+               adminPassword="<secure-fortigate-password>"
 
-# data-spoke (lab VMs)
-az deployment sub create --subscription $dataSubId -l westus2 --template-file ./main/data-spoke/datamain.bicep --parameters accessKey=$(cat ./docs/pwd.txt) labPassword=<lab-vm-password> --what-if
+# MCAPS hub (run from a separate MCAPS login)
+az deployment sub what-if --subscription "$hubSubId" -l westus2 \
+  --template-file ./main/hub/hubmain.bicep \
+  --parameters @./main/hub/hub.parameters.json \
+               tenantBFortigatePublicIp="<TenantB output>" \
+               vpnSharedKey="<secure-shared-key>" \
+               natPublicIP="$(curl -4 -s ifconfig.me)" \
+               accessKey="$(cat ./docs/pwd.txt)" \
+               sshPublicKey="$(cat ~/.ssh/id_ed25519.pub)"
 
 # Apps-spoke (Server2019 and SQL)
 az deployment sub create --subscription $appsSubId -l westus2 --template-file ./main/apps-spoke/appsmain.bicep --parameters accessKey=$(cat ./docs/pwd.txt) --what-if
@@ -203,18 +242,20 @@ az deployment sub create --subscription $appsSubId -l westus2 --template-file ./
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| VPN GW + peering | high | Run `./scripts/azcli/enable_vpngw_peering.sh` — redeploys hub with `deployVpnGw=true`, then patches spoke peerings to `useRemoteGateways=true` |
+| TenantB FortiOS configuration | high | Configure the route-based IPsec tunnel, static routes, and least-privilege policies using the MCAPS VPN public IP and CIDRs. |
+| VPN secret exchange | high | Inject the same PSK securely in both contexts; never commit it or expose it as a deployment output. |
 
 | TenantA SQL MI + AKS | medium | Validated regions: `northcentralus`, `westus3`, `swedencentral` |
 
-onprem fortigate confi details:
+FortiGate configuration details:
 
 On macOS, native RDP via Bastion requires the manual tunnel approach:
 # Step 1 — open tunnel (keep this running in background)
 az network bastion tunnel \
+  --subscription "$hubSubId" \
   --name CPSBastion \
   --resource-group hubRG \
-  --target-resource-id /subscriptions/ed70102f-f789-4d4e-ac00-074283844a0c/resourceGroups/hubRG-VM/providers/Microsoft.Compute/virtualMachines/hubVMpu54 \
+  --target-resource-id "/subscriptions/${hubSubId}/resourceGroups/hubRG-VM/providers/Microsoft.Compute/virtualMachines/hubVMpu54" \
   --resource-port 3389 \
   --port 54321 &
 

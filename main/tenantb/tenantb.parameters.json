@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": "westus2"
+    },
+    "tenantBAddressSpace": {
+      "value": "10.61.0.0/20"
+    },
+    "mcapsAddressPrefixes": {
+      "value": [
+        "10.50.0.0/20",
+        "10.52.0.0/20",
+        "10.53.0.0/20"
+      ]
+    },
+    "managementSourcePrefixes": {
+      "value": []
+    }
+  }
+}
