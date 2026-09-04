@@ -52,6 +52,34 @@ az account set --subscription $hubSubId
 az deployment sub create --subscription $hubSubId -l westus2 --template-file ./main/hub/hubmain.bicep --parameters natPublicIP=$(curl -4 -s ifconfig.me) accessKey=$(cat ./docs/pwd.txt) sshPublicKey="$(cat ~/.ssh/id_ed25519.pub)" 
 --what-if
 
+# ── SRE agent: register + wire into MCAPS (before TenantB) ──
+# The sre-demo agent ENDPOINT is created in the portal (sre.azure.com), not by Bicep.
+# The hub deploy above already created its supporting infra in hubRG-Monitor:
+# Log Analytics, App Insights (xelaAppsInsightfhmo), DCRs/VM Insights, ADX cluster (sredb).
+# On the first hub deploy leave sreAgentIdentityName/sreAgentPrincipalId empty (identity not created yet).
+
+# 0. (before any future teardown) snapshot the identity for recovery
+./scripts/azcli/sre-agent-snapshot.sh
+
+# 1. Register the agent at https://sre.azure.com (portal wizard, ~2-5 min)
+#    Name:         sre-demo
+#    Subscription: ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9  (hub)
+#    Region:       West US 2
+#    Model:        Anthropic (Claude)
+#    App Insights: existing xelaAppsInsightfhmo in hubRG-Monitor
+#    -> portal provisions the sre-demo-<suffix> managed identity in hubRG-Monitor
+
+# 2. Wire the new identity into IaC: discovers the MI, updates docs/sre-agent-config.txt,
+#    redeploys hubmain with sreAgentIdentityName + sreAgentPrincipalId
+#    (CanNotDelete lock on the identity + ADX AllDatabasesViewer RBAC).
+./scripts/azcli/sre-agent-rewire.sh --dry-run   # preview
+./scripts/azcli/sre-agent-rewire.sh             # apply
+
+# 3. Restore portal-only pieces (no API):
+#    ADX connector    -> https://xelaadx<suffix>.westus2.kusto.windows.net   db: sredb
+#    GitHub OAuth      -> re-authenticate
+#    Azure Resources   -> grant agent access on hub ($hubSubId) + apps ($appsSubId) subs
+
 # TenantB and MCAPS compile, ARM validation, and what-if. Secrets are read from
 # git-ignored files (docs/*.txt) and passed via env vars only — never committed.
 export FORTIGATE_ADMIN_PASSWORD="$(cat ./docs/fortigate-pwd.txt)"
