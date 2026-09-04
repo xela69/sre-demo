@@ -35,7 +35,7 @@ Primary deployment entry points:
 - `main/hub/hubmain.bicep` - hub subscription and shared platform services
 - `main/apps-spoke/appsmain.bicep` - apps spoke workloads and app platform resources
 - `main/tenantb/tenantbmain.bicep` - TenantB VNet, FortiGate NVA, and source network
-- `main/dc-spoke/dcmain.bicep` - DC/on-prem spoke pattern
+- `main/dc-spoke/dcmain.bicep` - optional MCAPS infrastructure spoke pattern
 - `platform/` - identity, management group, subscription, and policy scaffolding
 
 Core components:
@@ -131,7 +131,7 @@ Lab intent:
 
 - Prove the landing zone/shared-services model.
 - Centralize inspection and routing through Azure Firewall.
-- Provide shared observability for hub, apps, data, and DC/on-prem simulation workloads.
+- Provide shared observability for hub, apps, and optional MCAPS infrastructure workloads.
 - Preserve `hubRG-Monitor` across rebuilds so SRE agent and monitoring resources survive lab teardown cycles.
 
 ### Apps Spoke
@@ -192,9 +192,9 @@ Lab intent:
 - Demonstrate SQL discovery, assessment, and migration from Xelatech into MCAPS targets.
 - Keep legacy/data workloads separate from the apps modernization target area.
 
-### DC / On-Prem Simulation Spoke
+### MCAPS Infrastructure Spoke
 
-The DC spoke is a lightweight expansion area for infrastructure or on-prem simulation patterns. It is less built out than apps/data today.
+The DC spoke is a lightweight expansion area for MCAPS infrastructure patterns. It is less built out than the apps spoke today.
 
 Network:
 
@@ -205,21 +205,21 @@ Network:
 
 Workloads:
 
-- `dcVM`: small Windows VM placeholder for DC/on-prem-style infrastructure scenarios.
+- `dcVM`: small Windows VM placeholder for MCAPS infrastructure scenarios.
 
 Lab intent:
 
-- Reserve a spoke for future domain services, infrastructure services, or additional on-prem site simulation.
+- Reserve a spoke for future domain or infrastructure services.
 - Reuse the same spoke routing model through the hub firewall.
-- Provide room to expand hybrid network and identity demos without overloading the apps/data spokes.
+- Provide room to expand MCAPS network and identity demos without overloading the apps spoke.
 
 ## Demo Storyline
 
 This environment can support several demos:
 
 1. Landing zone structure: hub-spoke, subscriptions, resource groups, policies, identities.
-2. Hybrid connectivity: FortiGate/on-prem routes over VPN into Azure.
-3. Network inspection: Azure Firewall controls DNS, internet egress, and east-west/on-prem traffic.
+2. Hybrid connectivity: TenantB FortiGate routes over VPN into MCAPS.
+3. Network inspection: Azure Firewall controls DNS, internet egress, east-west, and TenantB traffic.
 4. Migration scenario: SQL source VM and LabAppDB can represent app/data migration sources.
 5. SRE operations: VM Insights, Log Analytics, App Insights, ADX, and health KQL show operational telemetry.
 6. Resiliency/governance evolution: recommendations backlog tracks what moves this from demo to production-ready.

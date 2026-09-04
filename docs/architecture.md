@@ -44,7 +44,7 @@ Do not assume that setting a subscription changes the signed-in tenant. Login to
 | TenantB management | `10.61.1.0/24` | Administrative systems |
 | TenantB source workloads | `10.61.2.0/23` | Arc, SQL, and migration source systems |
 
-`10.51.0.0/20` is retired from the active design. TenantB is a VPN-connected remote site, not an MCAPS spoke.
+TenantB is a VPN-connected remote site, not an MCAPS spoke.
 
 ```mermaid
 flowchart LR
