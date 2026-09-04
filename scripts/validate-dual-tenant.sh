@@ -4,12 +4,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-TENANTB_SUBSCRIPTION="${TENANTB_SUBSCRIPTION:-94eb70ed-aedc-47a5-bff0-80d799466a0e}"
+TENANTB_SUBSCRIPTION="${TENANTB_SUBSCRIPTION:-ed70102f-f789-4d4e-ac00-074283844a0c}"
 MCAPS_SUBSCRIPTION="${MCAPS_SUBSCRIPTION:-ebc6a927-fe4b-49dc-8e99-3ffe8e8d01d9}"
 MCAPS_TENANT_ID="e2703bc7-74fd-40a0-8d0b-761571d44939"
 LOCATION="${LOCATION:-westus2}"
-# PAYG bundles the FortiGate license into hourly billing; requires a PAYG-eligible subscription (XelaCorp_Subs). BYOL needs a Fortinet license.
-LICENSE_MODEL="${LICENSE_MODEL:-PAYG}"
+# BYOL uses the free Marketplace plan and runs unlicensed in evaluation mode (no timer) on vsCode_Subs. PAYG requires a payment instrument (not available on vsCode_Subs).
+LICENSE_MODEL="${LICENSE_MODEL:-BYOL}"
 
 : "${FORTIGATE_ADMIN_PASSWORD:?Set FORTIGATE_ADMIN_PASSWORD for validation.}"
 : "${VPN_SHARED_KEY:?Set VPN_SHARED_KEY for validation.}"

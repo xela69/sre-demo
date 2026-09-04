@@ -29,15 +29,15 @@ param adminUsername string = 'fortiadmin'
 @description('FortiGate administrator password. Supply securely at validation or deployment time.')
 param adminPassword string
 
-@description('Low-cost FortiGate VM size with two supported network interfaces. DSv4 has quota in westus2; DSv5 does not.')
-param fortigateVmSize string = 'Standard_D2s_v4'
+@description('Low-cost FortiGate VM size with two supported network interfaces. DSv5 has quota in vsCode_Subs westus2.')
+param fortigateVmSize string = 'Standard_D2s_v5'
 
-@description('FortiGate licensing model. PAYG bundles the license into hourly billing (requires a supported payment instrument); BYOL requires a Fortinet license file.')
+@description('FortiGate licensing model. BYOL uses the free Marketplace plan and runs unlicensed in evaluation mode (no timer). PAYG bundles the license into hourly billing but requires a supported payment instrument.')
 @allowed([
   'PAYG'
   'BYOL'
 ])
-param licenseModel string = 'PAYG'
+param licenseModel string = 'BYOL'
 
 @secure()
 @description('FortiGate BYOL license (.lic) content. Ignored for PAYG. Leave empty for validation; supply the free-trial or paid license at deployment to activate the appliance.')

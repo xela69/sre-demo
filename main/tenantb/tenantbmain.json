@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "17933696685228794065"
+      "templateHash": "14749937503328868002"
     }
   },
   "parameters": {
@@ -70,20 +70,20 @@
     },
     "fortigateVmSize": {
       "type": "string",
-      "defaultValue": "Standard_D2s_v4",
+      "defaultValue": "Standard_D2s_v5",
       "metadata": {
-        "description": "Low-cost FortiGate VM size with two supported network interfaces. DSv4 has quota in westus2; DSv5 does not."
+        "description": "Low-cost FortiGate VM size with two supported network interfaces. DSv5 has quota in vsCode_Subs westus2."
       }
     },
     "licenseModel": {
       "type": "string",
-      "defaultValue": "PAYG",
+      "defaultValue": "BYOL",
       "allowedValues": [
         "PAYG",
         "BYOL"
       ],
       "metadata": {
-        "description": "FortiGate licensing model. PAYG bundles the license into hourly billing (requires a supported payment instrument); BYOL requires a Fortinet license file."
+        "description": "FortiGate licensing model. BYOL uses the free Marketplace plan and runs unlicensed in evaluation mode (no timer). PAYG bundles the license into hourly billing but requires a supported payment instrument."
       }
     },
     "fortigateLicenseContent": {
@@ -156,7 +156,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.46.1.21595",
-              "templateHash": "306931086912375036"
+              "templateHash": "16673358515664004027"
             }
           },
           "parameters": {
@@ -214,20 +214,20 @@
             },
             "fortigateVmSize": {
               "type": "string",
-              "defaultValue": "Standard_D2s_v4",
+              "defaultValue": "Standard_D2s_v5",
               "metadata": {
-                "description": "Low-cost FortiGate VM size with two supported network interfaces. DSv4 has quota in westus2; DSv5 does not."
+                "description": "Low-cost FortiGate VM size with two supported network interfaces. DSv5 has quota in vsCode_Subs westus2."
               }
             },
             "licenseModel": {
               "type": "string",
-              "defaultValue": "PAYG",
+              "defaultValue": "BYOL",
               "allowedValues": [
                 "PAYG",
                 "BYOL"
               ],
               "metadata": {
-                "description": "FortiGate licensing model. PAYG bundles the license into hourly billing (requires a supported payment instrument); BYOL requires a Fortinet license file."
+                "description": "FortiGate licensing model. BYOL uses the free Marketplace plan and runs unlicensed in evaluation mode (no timer). PAYG bundles the license into hourly billing but requires a supported payment instrument."
               }
             },
             "fortigatePaygSku": {
