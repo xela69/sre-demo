@@ -43,3 +43,7 @@ Thumbs.db
 docs/pwd.txt
 docs/fortigate-pwd.txt
 docs/vpn-psk.txt
+
+# FortiGate BYOL license
+docs/fortigate.lic
+*.lic
