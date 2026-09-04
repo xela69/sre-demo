@@ -49,7 +49,7 @@ All seven entry points compiled successfully. `platform/mngt/main.bicep` emitted
 | Management-group policy | Passed | Passed: 0 changes | Evaluated at the existing `Infra-grp` management group. The checked-in policy parameters are empty. |
 | Platform identity | Passed | Passed: 8 creates | Evaluated in the Infra-hub subscription. |
 | Hub | Passed | Passed: 171 creates, 1 deploy, 14 unsupported | Revalidated with the TenantB VPN contract. No deletes were reported. The 14 unsupported analyses are role assignments whose IDs depend on identities created during deployment. |
-| TenantB source network | Passed | Passed: 9 creates | Validated independently in the Xelatech subscription. No deletes or unsupported changes were reported. |
+| TenantB source network | Passed | Passed: 9 creates | Validated independently in the Xelatech `XelaCorp_Subs` subscription with FortiGate PAYG. No deletes or unsupported changes were reported. |
 | DC spoke | Passed | Passed: 0 changes | No changes were reported. |
 | Apps spoke | Passed | Passed: 52 creates, 2 unsupported | No deletes were reported. |
 
@@ -57,9 +57,14 @@ Validation used `az deployment tenant|mg|sub validate` followed by the matching 
 
 A static RBAC scan found role assignments scoped through the owning modules and using built-in role IDs or names. Provider validation passed for the policy, identity, hub, DC, and apps phases. No deployment or post-deployment command was executed.
 
-TenantB and MCAPS were revalidated together on 2026-09-03 with `scripts/validate-dual-tenant.sh`. The initial TenantB validation reached ARM but the FortiGate PAYG plan was rejected because the Visual Studio subscription does not support its Marketplace payment instrument. The TenantB template now defaults to FortiGate BYOL plan `fortinet_fg-vm`, version `7.4.9`; Marketplace terms were accepted and both ARM validations and what-if previews passed.
+TenantB and MCAPS were revalidated together on 2026-09-04 with `scripts/validate-dual-tenant.sh`. The TenantB template now supports a `licenseModel` toggle (`PAYG` default, `BYOL` fallback):
 
-The MCAPS preview used documentation-only peer IP `192.0.2.10`. Supply `TENANTB_FORTIGATE_PUBLIC_IP` from the deployed TenantB static public IP before deployment. FortiGate BYOL also requires a valid Fortinet license before the appliance can become operational.
+- **PAYG (default):** the FortiGate license is bundled into hourly billing, so no license file is needed and redeploying resets the demo timer. PAYG requires a subscription with a supported payment instrument. The Visual Studio subscription `ed70102f-f789-4d4e-ac00-074283844a0c` (`vsCode_Subs`) fails Marketplace eligibility with `The 'unknown' payment instrument(s) is not supported`. The Xelatech `XelaCorp_Subs` subscription `94eb70ed-aedc-47a5-bff0-80d799466a0e` is PAYG-eligible; its FortiGate PAYG Marketplace terms were accepted and ARM validation plus what-if passed. The default TenantB deployment target is now `XelaCorp_Subs`.
+- **BYOL (fallback):** plan `fortinet_fg-vm`, version `7.4.9`. Requires a Fortinet license (15-day free-trial `.lic` or paid) injected via `fortigateLicenseContent`.
+
+The FortiGate VM size was changed from `Standard_D2s_v5` to `Standard_D2s_v4` because `standardDSv5Family` has a 0-core quota in `westus2` on `XelaCorp_Subs`, while the DSv4 family has available quota. Both sizes are 2 vCPU / 8 GB with two NICs.
+
+The MCAPS preview used documentation-only peer IP `192.0.2.10`. Supply `TENANTB_FORTIGATE_PUBLIC_IP` from the deployed TenantB static public IP before deployment.
 
 Blocking remediation:
 
