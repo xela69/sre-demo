@@ -14,6 +14,7 @@ az account management-group list --output table
 TENANTB_TENANT="6aa484b3-3f8f-4112-812e-161516a37550"; echo $TENANTB_TENANT
 
 az login --tenant $TENANTB_TENANT
+az account list --all --query "[].{Subscription:name, TenantId:tenantId}" -o table
 
 UPN="arnoldp@xelatech.net"
 az role assignment list --assignee $UPN --all -o table
@@ -51,11 +52,13 @@ az account set --subscription $hubSubId
 az deployment sub create --subscription $hubSubId -l westus2 --template-file ./main/hub/hubmain.bicep --parameters natPublicIP=$(curl -4 -s ifconfig.me) accessKey=$(cat ./docs/pwd.txt) sshPublicKey="$(cat ~/.ssh/id_ed25519.pub)" 
 --what-if
 
-# TenantB and MCAPS compile, ARM validation, and what-if. Secrets are environment-only.
-export FORTIGATE_ADMIN_PASSWORD='<set-securely>'
-export VPN_SHARED_KEY='<set-securely>'
-export MCAPS_ACCESS_KEY='<set-securely>'
-export TENANTB_FORTIGATE_PUBLIC_IP='<deployed-tenantb-static-public-ip>'
+# TenantB and MCAPS compile, ARM validation, and what-if. Secrets are read from
+# git-ignored files (docs/*.txt) and passed via env vars only — never committed.
+export FORTIGATE_ADMIN_PASSWORD="$(cat ./docs/fortigate-pwd.txt)"
+export VPN_SHARED_KEY="$(cat ./docs/vpn-psk.txt)"
+export MCAPS_ACCESS_KEY="$(cat ./docs/pwd.txt)"
+# Optional until TenantB is deployed; omit to use the MCAPS documentation-only preview peer.
+# export TENANTB_FORTIGATE_PUBLIC_IP='<deployed-tenantb-static-public-ip>'
 ./scripts/validate-dual-tenant.sh
 
 # 1. Deploy Apps-spoke — only accessKey required

@@ -40,3 +40,6 @@ venv/
 
 # OS temp files
 Thumbs.db
+docs/pwd.txt
+docs/fortigate-pwd.txt
+docs/vpn-psk.txt
